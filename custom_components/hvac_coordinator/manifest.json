@@ -1,0 +1,19 @@
+{
+  "domain": "hvac_coordinator",
+  "name": "HVAC Coordinator",
+  "version": "0.3.0",
+  "codeowners": [
+    "@meremortals70"
+  ],
+  "documentation": "https://github.com/meremortals70/hvac-coordinator",
+  "issue_tracker": "https://github.com/meremortals70/hvac-coordinator/issues",
+  "integration_type": "hub",
+  "iot_class": "calculated",
+  "config_flow": true,
+  "single_config_entry": true,
+  "quality_scale": "platinum",
+  "dependencies": [
+    "climate"
+  ],
+  "requirements": []
+}

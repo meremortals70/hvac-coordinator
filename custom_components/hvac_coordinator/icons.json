@@ -1,0 +1,28 @@
+{
+  "entity": {
+    "sensor": {
+      "mode": {
+        "default": "mdi:state-machine",
+        "state": {
+          "lockout": "mdi:lock",
+          "unoccupied": "mdi:home-outline",
+          "occupied": "mdi:home",
+          "sleep": "mdi:sleep",
+          "precondition": "mdi:home-clock",
+          "precool": "mdi:snowflake-alert",
+          "coast": "mdi:sail-boat"
+        }
+      },
+      "comfort_index": {
+        "default": "mdi:thermometer-lines"
+      },
+      "target_dry_bulb": {
+        "default": "mdi:thermometer-check"
+      }
+    }
+  },
+  "services": {
+    "heading_home": "mdi:home-import-outline",
+    "clear_override": "mdi:close-circle-outline"
+  }
+}

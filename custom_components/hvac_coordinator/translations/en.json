@@ -1,0 +1,133 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "HVAC Coordinator",
+        "description": "Creates the coordinator. Add your rooms and tariff afterwards from Configure. Nothing runs until they are entered."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "HVAC Coordinator is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "room": {
+        "title": "Room",
+        "description": "Which air conditioner this room uses, and which sensors describe it. The sleep schedule is what puts the room on its sleep band; without one, the sleep band is never used. Leave the lockout reason blank unless this room must never be actuated.",
+        "data": {
+          "name": "Room name",
+          "climate_entity_id": "Air conditioner",
+          "temperature_entity_id": "Temperature sensor",
+          "humidity_entity_id": "Humidity sensor",
+          "presence_entity_id": "Presence sensor",
+          "illuminance_entity_id": "Illuminance sensor",
+          "opening_entity_ids": "Windows and doors",
+          "cover_entity_ids": "Blinds",
+          "lockout_reason": "Lockout reason",
+          "sleep_schedule_entity_id": "Sleep schedule"
+        }
+      },
+      "bands": {
+        "title": "Comfort bands",
+        "description": "The comfort index band for this room, in HCI. This is the only comfort setting there is. Leave a mode blank and the room will not be actuated in that mode. An unoccupied room is always off.",
+        "data": {
+          "occupied_low": "Occupied, lower bound",
+          "occupied_high": "Occupied, upper bound",
+          "sleep_low": "Sleep, lower bound",
+          "sleep_high": "Sleep, upper bound",
+          "precool_low": "Precool, lower bound",
+          "precool_high": "Precool, upper bound"
+        }
+      },
+      "init": {
+        "title": "HVAC Coordinator",
+        "menu_options": {
+          "room": "Add a room",
+          "edit_room": "Edit a room",
+          "remove_room": "Remove a room"
+        }
+      },
+      "edit_room": {
+        "title": "Edit a room",
+        "description": "Pick the room to change. Its current settings are prefilled.",
+        "data": {
+          "room_id": "Room"
+        }
+      },
+      "remove_room": {
+        "title": "Remove a room",
+        "description": "The room's device and all its entities are removed with it. Learned model state for the room is discarded.",
+        "data": {
+          "room_id": "Room"
+        }
+      }
+    },
+    "error": {
+      "band_inverted": "A band's lower bound must be below its upper bound."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "mode": {
+        "name": "Mode",
+        "state": {
+          "lockout": "Lockout",
+          "unoccupied": "Unoccupied",
+          "occupied": "Occupied",
+          "sleep": "Sleep",
+          "precondition": "Precondition",
+          "precool": "Precool",
+          "coast": "Coast"
+        }
+      },
+      "comfort_index": {
+        "name": "Comfort index"
+      },
+      "target_dry_bulb": {
+        "name": "Target dry bulb"
+      }
+    }
+  },
+  "services": {
+    "heading_home": {
+      "name": "Heading home",
+      "description": "Brings a room to its comfort band ahead of arrival. This is the only thing that overrides an unoccupied room being off.",
+      "fields": {
+        "room_id": {
+          "name": "Room",
+          "description": "The room to bring to comfort."
+        },
+        "deadline": {
+          "name": "Deadline",
+          "description": "Optional. When the room should have reached its comfort band."
+        }
+      }
+    },
+    "clear_override": {
+      "name": "Clear override",
+      "description": "Drops any heading-home request for a room.",
+      "fields": {
+        "room_id": {
+          "name": "Room",
+          "description": "The room to clear."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "unknown_room": {
+      "message": "No room called {room_id} is configured."
+    }
+  },
+  "issues": {
+    "unrecognised_constraint": {
+      "title": "Tariff constraints this controller does not act on",
+      "description": "The tariff declares {constraints}, which this controller does not act on itself. They are passed through for whichever system owns that actuator. Nothing is broken; this is a note that something else has to consume them."
+    },
+    "room_without_bands": {
+      "title": "Rooms with no comfort bands",
+      "description": "{rooms} have no comfort bands configured, so they will never be actuated. Add bands from Configure, or set a lockout reason if that is deliberate."
+    }
+  }
+}
