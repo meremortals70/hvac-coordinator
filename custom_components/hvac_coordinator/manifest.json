@@ -1,7 +1,7 @@
 {
   "domain": "hvac_coordinator",
   "name": "HVAC Coordinator",
-  "version": "0.3.0",
+  "version": "0.7.0",
   "codeowners": [
     "@meremortals70"
   ],

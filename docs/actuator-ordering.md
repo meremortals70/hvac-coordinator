@@ -50,10 +50,20 @@ it when the room is too cold.
 Skipped when:
 
 - The room has no covers configured
-- There is no illuminance reading, so there is no way to tell whether the room
-  is sunlit
-- Illuminance is below the solar gain threshold — moving a blind at night
-  achieves nothing but noise
+- There is no way to tell whether the sun is on the room
+- The sun is not on the room — moving a blind at night achieves nothing
+- The covers are already where they need to be (within 5% of the useful
+  extreme), which is what lets the ordering escalate
+
+**The gate is sun geometry, not light level.** A semi-transparent blind reads
+bright when it is fully closed, so illuminance would report nothing to block at
+exactly the moment the blind is already blocking. Point the room's "Sun on this
+room's windows" setting at a sensor that knows the sun's position relative to
+the glass — Adaptive Cover Pro publishes one per cover.
+
+Without that sensor the controller falls back to whether the sun is above the
+horizon, which is true of the whole house and wrong for any room the sun never
+reaches.
 
 Cover movement is delegated to Adaptive Cover Pro, which handles sun geometry,
 venetian dual-axis sequencing and glare zones. This controller sets intent only.
@@ -78,25 +88,73 @@ with cooling. Selected when indoor humidity is at or above 65%.
 Reached only when everything above has been ruled out. For heating, covers are
 the only cheaper step, so heating goes covers → compressor.
 
+## What is actually called
+
+| Step | Call |
+|---|---|
+| Covers | `adaptive_cover_pro.set_position` for covers that integration owns, `cover.set_cover_position` for any other. 0% to block gain, 100% to admit it |
+| Fan | `fan_only`, plus the quietest fan mode and the least draughty swing the unit advertises |
+| Dry | `dry`, plus the quietest fan mode |
+| Compressor | `cool` or `heat`, plus the setpoint, a mixing fan mode and a mixing swing mode |
+| Nothing, in lockout or unoccupied | `climate.set_hvac_mode` to `off` |
+
+Setpoints go through the standard `climate.set_temperature`. Versatile
+Thermostat has no service of its own for it, so this works identically against
+a Versatile Thermostat wrapper or a bare manufacturer entity.
+
+**Choosing covers turns the climate entity off** for that cycle. Trying the
+free option first means not spending compressor energy alongside it. If the
+room is still out of band next cycle and the covers have no travel left, the
+ordering escalates.
+
+**Covers must have somewhere to go.** A blind already within 5% of shut counts
+as shut, is rejected with `covers: already closed against the gain`, and the
+next step is tried instead.
+
+### Nothing is sent that the entity has not advertised
+
+Every call is resolved against the entity's own capabilities, not against
+assumptions about any particular adaptor:
+
+| Wanted | Resolution order |
+|---|---|
+| Cooling | `cool`, then `heat_cool`, then `auto` |
+| Heating | `heat`, then `heat_cool`, then `auto` |
+| Dry | `dry` only |
+| Fan | `fan_only` only |
+
+A unit with no dedicated `cool` mode may still cool in `heat_cool` or `auto`,
+so those are real fallbacks rather than failures, and the trace records which
+was used.
+
+Capabilities also reach the **decision**, not just the actuation: a unit with no
+dry mode never has dry chosen for it, so the ordering escalates properly instead
+of stalling on a step that cannot be carried out.
+
+Targets follow `supported_features`. A unit taking a single target gets
+`temperature`; one taking a range gets `target_temp_low` and `target_temp_high`
+straddling the target by 1 °C, because sending a single value to a range-only
+unit is either rejected or silently applied to one side.
+
+**Swing is used where the unit has it.** A comfort index measured at one sensor
+is misled by a stratified room, so vanes move while conditioning and settle
+while idling. Fan and swing are only touched when `supported_features` says the
+unit has them.
+
+An unchanged decision is not re-sent.
+
 ## The thresholds
 
 | Threshold | Value | Status |
 |---|---|---|
 | Fan margin | 0.5 HCI | Fixed internal |
+| Cover travel margin | 5% | Fixed internal |
 | Dry mode humidity | 65% | **Placeholder** |
-| Solar gain | 2000 lux | **Placeholder** |
 
 These are not settings and will not become settings. Exposing tuning parameters
 is how configuration becomes unusable.
 
-The two marked placeholder are stand-ins for the thermal model:
-
-- A single humidity threshold cannot distinguish a latent load from a sensible
-  one. 65% at 22 °C and 65% at 30 °C are different loads. The model learns the
-  sensible and latent terms separately, and that split will make this decision
-  properly.
-- The lux threshold cannot be universal at all, because what a sensor reads
-  depends on where in the room it sits and what it faces. The correct signal is
-  solar gain predicted from sun position, aspect and an irradiance forecast.
-  Until then it is a crude proxy and **will be wrong in rooms whose sensor is
-  not near the window.**
+The one marked placeholder is a stand-in for the thermal model: a single
+humidity threshold cannot distinguish a latent load from a sensible one. 65% at
+22 °C and 65% at 30 °C are different loads. The model learns the sensible and
+latent terms separately, and that split will make this decision properly.

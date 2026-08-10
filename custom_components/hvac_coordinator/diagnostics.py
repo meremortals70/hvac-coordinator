@@ -56,6 +56,14 @@ async def async_get_config_entry_diagnostics(
             if coordinator.tariff
             else []
         ),
+        "models": {
+            room_id: model.diagnostics()
+            for room_id, model in coordinator.models.items()
+        },
+        "forecast": (
+            coordinator.forecast.as_attributes() if coordinator.forecast else None
+        ),
+        "outdoor_temperature_entity_id": coordinator.outdoor_entity_id,
         "traces": {
             room_id: trace.as_attributes()
             for room_id, trace in (coordinator.data or {}).items()

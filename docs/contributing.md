@@ -9,9 +9,10 @@ no dependencies at all:
 python3 -m unittest discover -s tests -p "test_core.py" -v
 ```
 
-43 tests covering the comfort index and its inverse, mode precedence, the full
+111 tests covering the comfort index and its inverse, mode precedence, the full
 actuator ordering, tariff windows and constraint handling, and setpoint
-clamping.
+clamping, the setup form helpers, the seeded band defaults and lockout reason
+handling.
 
 The Home Assistant surface tests need the test harness:
 
@@ -41,7 +42,11 @@ import resolves to `Any`.
 | `models.py` | No — modes, room config, inputs, trace |
 | `modes.py` | No — mode precedence and actuator selection |
 | `tariff.py` | No — windows and constraints |
+| `thermal.py` | No — the learned model |
+| `forecast.py` | No — the demand forecast |
+| `forms.py` | No — shaping setup forms into stored configuration |
 | `store.py` | Yes — learned state persistence |
+| `actuator.py` | Yes — turns decisions into service calls |
 | `coordinator.py` | Yes — reads state, runs the evaluator |
 | `entity.py` | Yes — base entity and device info |
 | `sensor.py` | Yes — the three sensors per room |

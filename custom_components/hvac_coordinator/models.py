@@ -77,6 +77,10 @@ class RoomConfig:
     #: is in its sleeping hours. Without one, SLEEP is never entered.
     sleep_schedule_entity_id: str | None = None
     illuminance_entity_id: str | None = None
+    #: A binary sensor that is on while the sun is on this room's windows.
+    #: Adaptive Cover Pro publishes one per cover ("Sun Infront"). Without it,
+    #: the controller falls back to whether the sun is above the horizon.
+    direct_sun_entity_id: str | None = None
     opening_entity_ids: tuple[str, ...] = ()
     cover_entity_ids: tuple[str, ...] = ()
     #: Set for rooms that must never actuate. Carries the reason string that
@@ -123,12 +127,27 @@ class RoomInputs:
     #: Set by the heading-home request. The only thing that brings an
     #: unoccupied room back on.
     heading_home: bool = False
-    #: Room illuminance in lux, where a sensor exists. Used to decide whether
-    #: there is solar gain for the covers to act on: closing a blind at night
-    #: achieves nothing and just makes noise.
+    #: Room illuminance in lux, where a sensor exists. Recorded, not acted on.
+    #: It cannot tell you whether a cover is doing its job: a semi-transparent
+    #: blind reads bright when fully closed.
     illuminance_lux: float | None = None
+    #: Whether the sun is currently on this room's windows. Geometry, not light
+    #: level — sun position against the window aspect. None when unknown.
+    direct_sun: bool | None = None
     #: Whether this room has any covers under the controller's direction.
     has_covers: bool = False
+    #: What the unit itself can do, read from the climate entity. The decision
+    #: has to know: choosing dry on a unit with no dry mode would leave the
+    #: actuator with a rejection and nothing to fall back to.
+    can_cool: bool = True
+    can_heat: bool = True
+    can_dry: bool = True
+    can_fan_only: bool = True
+    #: Mean cover position across the room, 0 closed to 100 open, or None when
+    #: no cover reports one. Covers are only worth commanding when they still
+    #: have somewhere to go: without this the selector picks covers every cycle
+    #: on an already-shut room and never escalates.
+    cover_position: float | None = None
 
 
 @dataclass(slots=True)
@@ -157,6 +176,10 @@ class DecisionTrace:
     #: Which way the room needs to move to reach its band: "cool", "heat" or
     #: None when it is already inside.
     demand: str | None = None
+    #: The room's learned thermal coefficients and how converged they are.
+    #: Published so a decision that depended on the model can be checked
+    #: against what the model actually believed at the time.
+    model: dict[str, Any] = field(default_factory=dict)
 
     def as_attributes(self) -> dict[str, Any]:
         """Flatten for publication as entity attributes."""
@@ -178,4 +201,5 @@ class DecisionTrace:
             "actuator": str(self.actuator),
             "reasons": list(self.reasons),
             "rejected": list(self.rejected),
+            "model": dict(self.model),
         }

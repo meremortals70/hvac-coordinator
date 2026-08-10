@@ -18,6 +18,9 @@
       },
       "target_dry_bulb": {
         "default": "mdi:thermometer-check"
+      },
+      "demand_forecast": {
+        "default": "mdi:transmission-tower-export"
       }
     }
   },

@@ -17,6 +17,15 @@ LOGGER: Final = logging.getLogger(__package__)
 #: state changes on the entities each room reads, so this is a backstop.
 EVALUATION_INTERVAL: Final = timedelta(seconds=30)
 
+#: How far ahead the model must show the band holding before a room coasts.
+#: Long enough that coasting means something, short enough that the prediction
+#: is still worth trusting.
+COAST_HORIZON_HOURS: Final = 1.0
+
+#: How much warmer outdoors must be than indoors to count as demand ahead,
+#: before the model has learned enough to answer properly.
+PRECOOL_DEMAND_MARGIN_C: Final = 2.0
+
 CONF_ROOMS: Final = "rooms"
 CONF_ROOM_ID: Final = "room_id"
 CONF_CLIMATE_ENTITY: Final = "climate_entity_id"
@@ -25,9 +34,58 @@ CONF_HUMIDITY_ENTITY: Final = "humidity_entity_id"
 CONF_PRESENCE_ENTITY: Final = "presence_entity_id"
 CONF_SLEEP_SCHEDULE_ENTITY: Final = "sleep_schedule_entity_id"
 CONF_ILLUMINANCE_ENTITY: Final = "illuminance_entity_id"
+CONF_DIRECT_SUN_ENTITY: Final = "direct_sun_entity_id"
+CONF_OUTDOOR_TEMPERATURE_ENTITY: Final = "outdoor_temperature_entity_id"
+CONF_HORIZON_HOURS: Final = "horizon_hours"
 CONF_OPENING_ENTITIES: Final = "opening_entity_ids"
 CONF_COVER_ENTITIES: Final = "cover_entity_ids"
+CONF_LOCKOUT: Final = "lockout"
 CONF_LOCKOUT_REASON: Final = "lockout_reason"
+#: Custom lockout reasons the user has typed. Stored once for the whole entry,
+#: so a reason invented for one room is offered for every room afterwards.
+CONF_LOCKOUT_REASONS: Final = "lockout_reasons"
+
+#: Offered in the lockout dropdown before the user has added any of their own.
+DEFAULT_LOCKOUT_REASONS: Final = (
+    "Under renovation",
+    "Unit disconnected",
+    "Awaiting commissioning",
+    "Faulty, awaiting repair",
+    "Seasonal shutdown",
+    "Not in use",
+)
+
+#: Seeded into every new room, identically, so a fresh install is sensible with
+#: zero configuration. Derived from the ASHRAE 55 sedentary comfort zone
+#: converted onto the comfort index scale, not from any particular house.
+#: Editable in the form; change them freely.
+#:
+#: Unoccupied has no band: an unoccupied room is off. Precondition uses the
+#: occupied band. Coast inherits the band it displaced.
+DEFAULT_BANDS: Final = {
+    "occupied": {"low": 24.0, "high": 27.0},
+    "sleep": {"low": 21.0, "high": 24.0},
+    "precool": {"low": 24.0, "high": 27.0},
+}
+
+#: Offered in the rate dropdown. A rate is a label, not a price: this
+#: controller does no arithmetic on cost. Custom rates are added the same way
+#: custom lockout reasons are.
+DEFAULT_RATE_LABELS: Final = (
+    "free",
+    "cheap",
+    "off_peak",
+    "standard",
+    "shoulder",
+    "peak",
+)
+
+#: Rate labels the user has typed, stored for the whole entry.
+CONF_RATE_LABELS: Final = "rate_labels"
+
+#: Used when a room is locked out but no reason was given. Should not normally
+#: happen, but a lockout without an explanation is worse than a generic one.
+FALLBACK_LOCKOUT_REASON: Final = "Locked out"
 CONF_BANDS: Final = "bands"
 CONF_BAND_LOW: Final = "low"
 CONF_BAND_HIGH: Final = "high"

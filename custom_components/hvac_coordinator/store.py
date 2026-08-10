@@ -64,13 +64,19 @@ class ModelStore:
         self._data = stored
 
     def room(self, room_id: str) -> dict[str, Any]:
-        """Learned state for one room. Empty dict means not yet converged."""
+        """Learned state for one room. Empty dict means nothing learned yet."""
         rooms: dict[str, Any] = self._data.setdefault("rooms", {})
         return rooms.setdefault(room_id, {})
 
     def update_room(self, room_id: str, state: dict[str, Any]) -> None:
+        """Record learned state, written out on a delay."""
         self._data.setdefault("rooms", {})[room_id] = state
         self._store.async_delay_save(self._data_for_save, SAVE_DELAY_SECONDS)
+
+    def forget_room(self, room_id: str) -> None:
+        """Drop a removed room's learned state."""
+        if self._data.get("rooms", {}).pop(room_id, None) is not None:
+            self._store.async_delay_save(self._data_for_save, SAVE_DELAY_SECONDS)
 
     def _data_for_save(self) -> dict[str, Any]:
         return self._data

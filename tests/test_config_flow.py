@@ -13,18 +13,46 @@ from custom_components.hvac_coordinator.const import (
 )
 
 
-async def test_user_flow_creates_empty_entry(
+async def test_user_flow_collects_the_first_room(
     hass: HomeAssistant, mock_setup_entry: None
 ) -> None:
-    """A fresh install starts with no rooms and no tariff."""
+    """Setup produces a working room rather than an empty hub."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": "user"}
     )
     assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "room"
 
-    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {"name": "First Room", CONF_CLIMATE_ENTITY: "climate.first"},
+    )
+    assert result["step_id"] == "bands"
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"occupied_low": 24.0, "occupied_high": 27.0}
+    )
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_ROOMS] == []
+    assert len(result["data"][CONF_ROOMS]) == 1
+    assert result["data"][CONF_ROOMS][0]["room_id"] == "first_room"
+
+
+async def test_user_flow_rejects_an_inverted_band(
+    hass: HomeAssistant, mock_setup_entry: None
+) -> None:
+    """The same validation applies during initial setup."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": "user"}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {"name": "First Room", CONF_CLIMATE_ENTITY: "climate.first"},
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"occupied_low": 27.0, "occupied_high": 24.0}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "band_inverted"}
 
 
 async def test_single_instance_only(

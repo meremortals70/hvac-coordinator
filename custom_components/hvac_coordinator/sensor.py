@@ -17,11 +17,14 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import EntityCategory, UnitOfTemperature
+from homeassistant.const import EntityCategory, UnitOfEnergy, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import HvacConfigEntry
+from .const import DOMAIN
 from .coordinator import HvacCoordinator
 from .entity import HvacRoomEntity
 from .models import DecisionTrace, RoomConfig
@@ -102,6 +105,7 @@ async def async_setup_entry(
 
     _add_new_rooms()
     entry.async_on_unload(coordinator.async_add_listener(_add_new_rooms))
+    async_add_entities([DemandForecastSensor(coordinator, entry)])
 
 
 class HvacRoomSensor(HvacRoomEntity, SensorEntity):
@@ -143,3 +147,54 @@ class HvacRoomSensor(HvacRoomEntity, SensorEntity):
         if (trace := self.trace) is None or self.entity_description.attributes_fn is None:
             return None
         return self.entity_description.attributes_fn(trace)
+
+
+class DemandForecastSensor(CoordinatorEntity[HvacCoordinator], SensorEntity):
+    """Projected HVAC energy over the horizon.
+
+    This is the published contract with whatever owns the battery. It carries
+    **no vendor concepts**: projected kWh, a per-window breakdown, and the
+    constraints in force. A Powerwall automation and a Sungrow automation each
+    translate it into their own primitives.
+
+    The controller never writes battery actuators itself. Two writers on one
+    actuator fail silently, and battery control is vendor-specific — coding one
+    in would tie this project to a single manufacturer.
+    """
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "demand_forecast"
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 2
+    _attr_icon = "mdi:transmission-tower-export"
+
+    def __init__(self, coordinator: HvacCoordinator, entry: HvacConfigEntry) -> None:
+        """Initialize the forecast sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_demand_forecast"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name="HVAC Coordinator",
+            manufacturer="HVAC Coordinator",
+            model="Coordinator",
+            entry_type=DeviceEntryType.SERVICE,
+        )
+
+    @property
+    def available(self) -> bool:
+        """Available once a forecast has been produced."""
+        return super().available and self.coordinator.forecast is not None
+
+    @property
+    def native_value(self) -> float | None:
+        """Projected energy over the horizon, in kWh."""
+        forecast = self.coordinator.forecast
+        return None if forecast is None else forecast.total_kwh
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """The per-window breakdown, so automations can read either."""
+        forecast = self.coordinator.forecast
+        return None if forecast is None else forecast.as_attributes()

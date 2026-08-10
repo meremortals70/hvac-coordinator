@@ -28,17 +28,37 @@ Nothing. Creating the integration takes no settings. One instance only.
 | Humidity sensor | No | No comfort index, no actuation |
 | Presence sensor | No | Presence reads unknown; room holds occupied |
 | Sleep schedule | No | Sleep band is never used |
-| Illuminance sensor | No | Covers are never used |
+| Sun on this room's windows | No | Falls back to sun above horizon, which is house-wide |
+| Illuminance sensor | No | Recorded only; not acted on |
 | Windows and doors | No | No opening interlock |
 | Blinds | No | Covers are never used |
-| Lockout reason | No | Room actuates normally |
+| Lock this room out | No | Room actuates normally |
 
 The room id is derived from the room name. Adding a room whose name produces an
 existing id replaces that room rather than duplicating it.
 
+**Lockout is a tick box, not a text field.** Tick it and a further step asks
+why, offering a dropdown of reasons plus anything you have typed before. A
+reason you type is stored for the whole installation and offered for every room
+from then on. Text alone was too easy to fill in by accident, and an accidental
+lockout is a room that silently never runs.
+
 ### Comfort bands
 
 One low and one high, per mode, per room, in HCI.
+
+**Every room is seeded with the same defaults**, so a fresh install is sensible
+with no configuration at all:
+
+| Mode | Seeded band |
+|---|---|
+| Occupied | 24 – 27 |
+| Sleep | 21 – 24 |
+| Precool | 24 – 27 |
+
+They arrive prefilled in the form and are meant to be changed. They come from
+the ASHRAE 55 comfort zone converted onto the comfort index scale — nothing
+about any particular house is seeded.
 
 | Mode | Configurable |
 |---|---|
@@ -50,8 +70,9 @@ One low and one high, per mode, per room, in HCI.
 | Coast | **No — uses the band of the mode it displaced** |
 | Lockout | **No — never actuates** |
 
-Leave a mode's bounds blank and the room is never actuated in that mode. Both
-bounds must be supplied together; a low above its high is rejected at setup.
+Clear a mode's bounds and the room is never actuated in that mode — an office
+with no sleeping hours should clear the sleep pair. Both bounds must be supplied
+together; a low at or above its high is rejected at setup.
 
 **There is no global setting and no inheritance.** Every room is configured
 independently. Inheritance is what makes configuration feel complicated, and it
@@ -59,7 +80,8 @@ removes no controls.
 
 ### Tariff windows
 
-A window is a start, an end, a rate label and a set of constraints. See
+A window is a start, an end, a rate label, a set of constraints and whether
+coasting is permitted. Added and removed one at a time from **Configure**. See
 [Tariff](tariff.md).
 
 Configuring no tariff is valid. The controller runs on comfort alone.

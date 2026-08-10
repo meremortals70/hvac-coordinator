@@ -1,5 +1,16 @@
 # Tariff
 
+## Configuring it
+
+**Settings → Devices & Services → HVAC Coordinator → Configure → Add a tariff
+window.** One window at a time. The form shows the schedule as it stands and
+names any gap or overlap, so an incomplete schedule tells you what is missing
+rather than failing silently.
+
+Remove a window the same way.
+
+Configuring no tariff is valid — the controller runs on comfort alone.
+
 ## Windows
 
 A tariff is a list of windows. Each window carries:
@@ -18,6 +29,10 @@ rather than the integration failing to load.
 
 A window may wrap past midnight. A window whose start equals its end covers the
 whole day.
+
+The rate dropdown offers `free`, `cheap`, `off_peak`, `standard`, `shoulder`
+and `peak`, and accepts anything else you type. A label you add is offered for
+every window afterwards.
 
 Rate is a label, not a price. **The controller does no arithmetic on cost.**
 With fixed known windows a rule-based schedule is sufficient and auditable; an

@@ -9,7 +9,7 @@ Evaluated top to bottom. The first match wins.
 
 | Mode | Entered when | Behaviour |
 |---|---|---|
-| `LOCKOUT` | A lockout reason is configured | Never actuates. Beats everything |
+| `LOCKOUT` | The lockout box is ticked for this room | Never actuates. Beats everything |
 | `PRECONDITION` | A heading-home request is active | Drives to the occupied band, ignoring presence |
 | `PRECOOL` | Occupied, a precool window is declared, and demand is forecast ahead | Drives to the low bound to bank thermal mass |
 | `COAST` | The thermal model predicts the band holds unaided, and the window permits coasting | No compressor |
@@ -61,9 +61,12 @@ logic. See [Known limitations](known-limitations.md).
 
 ## Lockout
 
-Setting a lockout reason on a room means it is never actuated, whatever else is
-true. The reason string appears in the decision trace, so a room that is doing
-nothing always says why.
+Ticking the lockout box means the room is never actuated, whatever else is
+true. A further step asks why, offering a dropdown of built-in reasons plus any
+you have typed before; a new reason is stored for the whole installation.
+
+The reason appears in the decision trace, so a room that is doing nothing
+always says why.
 
 This exists for rooms under renovation, rooms whose unit is physically
 disconnected, and rooms you want configured but not yet live.

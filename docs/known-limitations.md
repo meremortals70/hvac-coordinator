@@ -10,18 +10,26 @@ actuated anything.** The decision logic is unit tested — 43 tests over the pur
 modules — but the Home Assistant surface has not been exercised. Treat the first
 install as a test.
 
-## It does not actuate
+## Actuation is wired but unproven
 
-The controller decides which actuator step is correct and publishes that
-decision. It does not yet carry it out.
+The controller now carries out its decisions: it sets the climate entity's HVAC
+mode, temperature and fan mode, and moves covers.
 
-Carrying it out means calling the regulation layer and the cover layer, and
-those service schemas have not been read from their source. Nothing is called on
-a guessed signature.
+**It has never done this against a real unit.** Every service call was written
+against the service definitions read from source — Home Assistant's own climate
+and cover components, Versatile Thermostat's `services.yaml`, and Adaptive
+Cover Pro's — but reading a schema is not the same as watching a compressor
+start.
 
-**What this means in practice:** installing this today gives you the comfort
-index, the modes, the decision trace and the reasoning. It does not change what
-your air conditioning does.
+Two things reduce the blast radius, and neither removes it:
+
+- Every call is capability-checked first. An HVAC mode the unit does not
+  advertise is a rejection in the trace, not a failed service call.
+- Unchanged decisions are not re-sent, so a stable room is not commanded every
+  30 seconds.
+
+Watch the first day. A room in lockout should command nothing at all, which is
+the cheapest way to confirm the gate works before trusting the rest.
 
 ## Two modes cannot be entered
 
@@ -30,13 +38,18 @@ your air conditioning does.
 | `COAST` | The thermal model. `predicted_to_hold` is always unknown |
 | `PRECOOL` | The demand forecast. `forecast_demand_ahead` is always false |
 
+## There is no demand forecast
+
+The vendor-neutral projected-energy sensor described in the architecture is not
+built, so nothing downstream can read what this controller expects to draw.
+
 Both are implemented and tested. They are waiting on inputs.
 
-## The deadline on heading home is recorded, not used
+## The deadline on heading home is recorded, not acted on
 
-Working out when to start in order to arrive at comfort on time requires knowing
-how fast the room responds, which is the thermal model. Until then,
-preconditioning starts immediately.
+The model can now answer how long a room takes to reach comfort, but
+preconditioning still starts immediately rather than working backwards from the
+deadline. The arithmetic exists; the scheduling around it does not.
 
 ## Two thresholds are placeholders
 
@@ -46,6 +59,17 @@ for decisions the thermal model should make.
 The lux threshold is the weaker of the two, and it **will be wrong in rooms
 whose illuminance sensor is not near the window** — what a sensor reads depends
 entirely on where it sits. Detail in [Actuator ordering](actuator-ordering.md).
+
+## The tariff is entered one window at a time
+
+There is no bulk import and no way to copy a schedule between installations.
+Six windows is six trips through the form.
+
+## Sun detection falls back to the whole house
+
+Without a per-room sun sensor, the controller uses whether the sun is above the
+horizon. That is true of every room at once, so a south-facing room will be
+treated as sunlit all day. Configure the per-room sensor.
 
 ## The comfort index is one opinion
 

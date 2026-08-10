@@ -30,18 +30,22 @@ Python packages.
 
 1. **Settings → Devices & Services → Add Integration**
 2. Search for **HVAC Coordinator** and select it
-3. Submit the empty form
+3. Describe your first room and its entities
+4. Set its comfort bands
 
-That creates the coordinator. It has no rooms yet and does nothing.
+Setup finishes with one working room. Add further rooms from **Configure**.
 
 **Only one instance can be created.** A second attempt aborts with "already
 configured". Rooms live inside the single entry.
 
-## Add a room
+## Add, edit or remove a room
 
 **Settings → Devices & Services → HVAC Coordinator → Configure**
 
-Two steps. First the room and its entities:
+A menu offers add, edit and remove. Editing prefills the room's current
+settings. Removing a room takes its device and entities with it.
+
+Adding and editing are the same two steps. First the room and its entities:
 
 | Field | Required | What it does |
 |---|---|---|
@@ -51,13 +55,16 @@ Two steps. First the room and its entities:
 | Humidity sensor | No | Without it, no comfort index and no actuation |
 | Presence sensor | No | Without it, presence reads unknown and the room holds occupied |
 | Sleep schedule | No | Without it, the sleep band is never used |
-| Illuminance sensor | No | Without it, covers are never used |
+| Sun on this room's windows | No | Without it, falls back to sun above horizon |
+| Illuminance sensor | No | Recorded, not acted on |
 | Windows and doors | No | Any one open suspends the room |
 | Blinds | No | Without any, covers are never used |
-| Lockout reason | No | Any text here means the room never actuates |
+| Lock this room out | No | Ticking it adds a step asking why. The room then never actuates |
 
-Then the comfort bands, in HCI. See [Comfort index](comfort-index.md) for what
-the numbers mean and where to start.
+Then the comfort bands, in HCI. These arrive prefilled with sensible defaults —
+occupied 24–27, sleep 21–24 — and are meant to be adjusted. Clear both boxes of
+a mode you do not want: an office with no sleeping hours should clear the sleep
+pair. See [Comfort index](comfort-index.md) for what the numbers mean.
 
 Repeat Configure for each room. Adding a room with a name that slugs to an
 existing room id replaces that room.

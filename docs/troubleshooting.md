@@ -45,13 +45,25 @@ and the demand forecast. The trace says
 Three possible causes, and the trace distinguishes them:
 
 - `covers: none configured for this room` — add them in Configure
-- `covers: no illuminance reading, cannot tell if sunlit` — no illuminance
-  sensor, or it has no reading
-- `covers: no solar gain to act on` — illuminance is below the threshold
+- `covers: cannot tell whether the sun is on this room` — no sun sensor and no
+  `sun.sun` either
+- `covers: no sun on this room to act on` — the sun is not on the glass
+- `covers: already closed against the gain` — working as designed; the ordering
+  has escalated to the next step
 
-The last is the placeholder threshold, and it will be wrong in rooms whose
-illuminance sensor is not near the window. See
-[Actuator ordering](actuator-ordering.md).
+If covers never move on a room the sun clearly reaches, the room has no "Sun on
+this room's windows" sensor and is falling back to sun-above-horizon. Point it
+at Adaptive Cover Pro's "Sun Infront" sensor for that cover.
+
+## The unit never runs in a mode I expected
+
+Read `rejected` on the mode sensor. A unit that does not advertise a mode never
+has it chosen — `dry: this unit has no dry mode`, `compressor: this unit cannot
+heat`. The controller reads `hvac_modes` from the entity itself, so if a mode is
+missing there it does not exist as far as this is concerned.
+
+If the trace says `cool unavailable, using heat_cool instead`, the unit has no
+dedicated cool mode and the fallback was used deliberately.
 
 ## The setpoint looks wrong for the temperature
 

@@ -1,8 +1,9 @@
 # Architecture
 
-**Version 0.4** — supersedes v0.3. The material change is that Layer 3 now
-exists as code rather than as a proposal, and several things settled in
-principle have been settled in practice differently.
+**Version 0.5** — supersedes v0.4. The material change is that Layer 3 is
+now complete against this design: comfort index, modes, actuator ordering,
+actuation, tariff, thermal model and demand forecast are all built and tested.
+Several things settled in principle have been settled in practice differently.
 
 ---
 
@@ -197,7 +198,7 @@ Per-room, learned from observation, with hysteresis fallback until converged.
 **The system works on day one and improves**, rather than requiring a training
 period before it does anything.
 
-Not yet built. What it unblocks:
+Built. Full detail in [Thermal model](thermal-model.md). What it unblocks:
 
 | Consumer | What it needs |
 |---|---|
@@ -205,7 +206,6 @@ Not yet built. What it unblocks:
 | `PRECOOL` | How far to overshoot without waste |
 | Heading home | When to start, to arrive at comfort on time |
 | Dry mode selection | The sensible/latent split, replacing a humidity threshold |
-| Cover selection | Predicted solar gain, replacing a lux threshold |
 | Demand forecast | Projected energy over a horizon |
 
 **The latent term is the addition.** Models built for heating climates learn
@@ -249,9 +249,9 @@ than run the compressor.
 | Decision trace | Built, tested |
 | Config flow, devices, entities, diagnostics | Built, untested |
 | Learned state persistence | Built, unused |
-| Thermal model | Not built |
-| Demand forecast | Not built |
-| Actuation | **Not wired** |
+| Thermal model | Built, tested |
+| Demand forecast | Built, tested |
+| Actuation | Built, tested |
 
 Nothing has been run in Home Assistant. See
 [Known limitations](known-limitations.md).
@@ -269,3 +269,7 @@ Nothing has been run in Home Assistant. See
 | Site data | Tariff and bands in the proposal | Configuration only. None in source |
 | Sleep | Schedule assumed | A configured schedule entity, or the mode is unreachable |
 | Quality scale | Not considered | Tracked against all 54 rules |
+| Covers | Gated on illuminance | Gated on sun geometry — a semi-transparent blind reads bright when closed |
+| Unit capabilities | Assumed | Read from the entity and fed into the decision |
+| Thermal model | Proposed | Built, with sensible and latent learned separately |
+| Demand forecast | Proposed | Built, vendor-neutral, published as a sensor |

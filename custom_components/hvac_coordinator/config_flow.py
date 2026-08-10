@@ -3,21 +3,21 @@
 Only what a user cannot get a correct result without is exposed. Regulation
 thresholds, model parameters and filter tuning are not settings.
 
-Nothing is seeded. A fresh install has no rooms, no bands and no tariff, and
-does nothing until they are entered.
+The initial setup collects the first room, so the integration does something
+the moment it is added; further rooms, edits and removals go through the
+options flow.
+
+Comfort bands arrive seeded with defaults derived from the ASHRAE 55 comfort
+zone, so a fresh install is sensible with no configuration. Nothing specific to
+any house is seeded: entity IDs and tariff windows are always the user's own.
 """
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.config_entries import (
-    ConfigFlow,
-    ConfigFlowResult,
-    OptionsFlow,
-)
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.helpers import selector
 
 from .const import (
@@ -25,20 +25,47 @@ from .const import (
     CONF_BAND_LOW,
     CONF_BANDS,
     CONF_CLIMATE_ENTITY,
+    CONF_COASTING_PERMITTED,
+    CONF_CONSTRAINTS,
     CONF_COVER_ENTITIES,
+    CONF_DIRECT_SUN_ENTITY,
+    CONF_END,
     CONF_HUMIDITY_ENTITY,
     CONF_ILLUMINANCE_ENTITY,
+    CONF_LOCKOUT,
     CONF_LOCKOUT_REASON,
+    CONF_LOCKOUT_REASONS,
     CONF_OPENING_ENTITIES,
+    CONF_OUTDOOR_TEMPERATURE_ENTITY,
     CONF_PRESENCE_ENTITY,
+    CONF_RATE,
+    CONF_RATE_LABELS,
     CONF_ROOM_ID,
     CONF_ROOMS,
     CONF_SLEEP_SCHEDULE_ENTITY,
+    CONF_START,
     CONF_TARIFF_WINDOWS,
     CONF_TEMPERATURE_ENTITY,
     DOMAIN,
+    FALLBACK_LOCKOUT_REASON,
 )
-from .models import Mode
+from .forms import (
+    BAND_MODES,
+    bands_are_valid,
+    bands_as_suggestions,
+    bands_from_input,
+    default_band_suggestions,
+    describe_window,
+    extend_lockout_reasons,
+    extend_rate_labels,
+    known_lockout_reasons,
+    known_rate_labels,
+    room_from_input,
+    schedule_gaps,
+    sort_windows,
+    window_from_input,
+)
+from .tariff import KNOWN_CONSTRAINTS
 
 ROOM_SCHEMA = vol.Schema(
     {
@@ -63,17 +90,42 @@ ROOM_SCHEMA = vol.Schema(
         vol.Optional(CONF_ILLUMINANCE_ENTITY): selector.EntitySelector(
             selector.EntitySelectorConfig(domain="sensor", device_class="illuminance")
         ),
+        vol.Optional(CONF_DIRECT_SUN_ENTITY): selector.EntitySelector(
+            selector.EntitySelectorConfig(domain="binary_sensor")
+        ),
         vol.Optional(CONF_OPENING_ENTITIES): selector.EntitySelector(
             selector.EntitySelectorConfig(domain="binary_sensor", multiple=True)
         ),
         vol.Optional(CONF_COVER_ENTITIES): selector.EntitySelector(
             selector.EntitySelectorConfig(domain="cover", multiple=True)
         ),
-        vol.Optional(CONF_LOCKOUT_REASON): selector.TextSelector(),
+        # A tick box rather than a free text field. Text alone is too easy to
+        # put something in by accident, and an accidental lockout is a room
+        # that silently never runs.
+        vol.Optional(CONF_LOCKOUT, default=False): selector.BooleanSelector(),
     }
 )
 
-_BAND_MODES = (Mode.OCCUPIED, Mode.SLEEP, Mode.PRECOOL)
+
+def lockout_schema(known_reasons: list[str]) -> vol.Schema:
+    """The lockout reason picker, offering the reasons already in use.
+
+    custom_value allows a reason that is not in the list to be typed. Anything
+    typed is added to the entry's reason list, so it is offered for every room
+    from then on.
+    """
+    return vol.Schema(
+        {
+            vol.Required(CONF_LOCKOUT_REASON): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=known_reasons,
+                    custom_value=True,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                    sort=True,
+                )
+            )
+        }
+    )
 
 BANDS_SCHEMA = vol.Schema(
     {
@@ -82,58 +134,180 @@ BANDS_SCHEMA = vol.Schema(
                 min=0, max=50, step=0.5, mode=selector.NumberSelectorMode.BOX
             )
         )
-        for mode in _BAND_MODES
+        for mode in BAND_MODES
         for bound in (CONF_BAND_LOW, CONF_BAND_HIGH)
     }
 )
 
 
-def _slug(name: str) -> str:
-    """Derive a stable room id from the room name."""
-    return re.sub(r"[^a-z0-9_]+", "_", name.strip().lower()).strip("_")
+def window_schema(rate_labels: list[str]) -> vol.Schema:
+    """One tariff window: when it runs, what it costs, what rules apply."""
+    return vol.Schema(
+        {
+            vol.Required(CONF_START): selector.TimeSelector(),
+            vol.Required(CONF_END): selector.TimeSelector(),
+            vol.Required(CONF_RATE): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=rate_labels,
+                    custom_value=True,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                    sort=True,
+                )
+            ),
+            vol.Optional(CONF_CONSTRAINTS, default=[]): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=sorted(KNOWN_CONSTRAINTS),
+                    multiple=True,
+                    custom_value=True,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional(
+                CONF_COASTING_PERMITTED, default=True
+            ): selector.BooleanSelector(),
+        }
+    )
 
 
-def _bands_from_input(user_input: dict[str, Any]) -> dict[str, dict[str, float]]:
-    """Collect only the bands where both bounds were supplied."""
-    bands: dict[str, dict[str, float]] = {}
-    for mode in _BAND_MODES:
-        low = user_input.get(f"{mode}_{CONF_BAND_LOW}")
-        high = user_input.get(f"{mode}_{CONF_BAND_HIGH}")
-        if low is not None and high is not None:
-            bands[str(mode)] = {CONF_BAND_LOW: float(low), CONF_BAND_HIGH: float(high)}
-    return bands
+class _RoomSteps:
+    """The room, lockout and bands steps, shared by both flows.
+
+    Both flows collect a room the same way. The only difference is what happens
+    to it afterwards, which is what _save_room does.
+    """
+
+    _room: dict[str, Any]
+
+    def _known_lockout_reasons(self) -> list[str]:
+        """Built-in reasons plus any the user has added, deduplicated."""
+        return known_lockout_reasons(self._stored_lockout_reasons())
+
+    def _stored_lockout_reasons(self) -> list[str]:
+        """Reasons the user has typed before. Empty for a fresh install."""
+        return []
+
+    def _suggested_room(self) -> dict[str, Any]:
+        """Values to prefill the room form with. Empty when adding."""
+        return {}
+
+    def _suggested_bands(self) -> dict[str, float]:
+        """Values to prefill the bands form with.
+
+        A new room gets the seeded defaults, so the form arrives with sensible
+        numbers rather than six empty boxes.
+        """
+        return default_band_suggestions()
+
+    async def async_step_room(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Collect the room and the entities that describe it."""
+        if user_input is None:
+            suggested = self._suggested_room()
+            return self.async_show_form(  # type: ignore[attr-defined,no-any-return]
+                step_id="room",
+                data_schema=self.add_suggested_values_to_schema(  # type: ignore[attr-defined]
+                    ROOM_SCHEMA, suggested
+                )
+                if suggested
+                else ROOM_SCHEMA,
+            )
+
+        self._room = room_from_input(user_input)
+        if user_input.get(CONF_LOCKOUT):
+            return await self.async_step_lockout()
+        return await self.async_step_bands()
+
+    async def async_step_lockout(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Why this room is locked out. Only reached when the box was ticked."""
+        if user_input is None:
+            suggested = self._suggested_lockout()
+            schema = lockout_schema(self._known_lockout_reasons())
+            return self.async_show_form(  # type: ignore[attr-defined,no-any-return]
+                step_id="lockout",
+                data_schema=self.add_suggested_values_to_schema(  # type: ignore[attr-defined]
+                    schema, suggested
+                )
+                if suggested
+                else schema,
+            )
+
+        reason = str(user_input[CONF_LOCKOUT_REASON]).strip()
+        self._room[CONF_LOCKOUT_REASON] = reason or FALLBACK_LOCKOUT_REASON
+        return await self.async_step_bands()
+
+    def _suggested_lockout(self) -> dict[str, Any]:
+        """Prefill the reason when editing a room that is already locked out."""
+        return {}
+
+    async def async_step_bands(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Collect the comfort bands for this room."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            bands = bands_from_input(user_input)
+            if not bands_are_valid(bands):
+                errors["base"] = "band_inverted"
+            else:
+                self._room[CONF_BANDS] = bands
+                return self._save_room()
+
+        suggested = self._suggested_bands()
+        return self.async_show_form(  # type: ignore[attr-defined,no-any-return]
+            step_id="bands",
+            data_schema=self.add_suggested_values_to_schema(  # type: ignore[attr-defined]
+                BANDS_SCHEMA, suggested
+            ),
+            errors=errors,
+        )
+
+    def _save_room(self) -> ConfigFlowResult:
+        """Store the collected room. Implemented by each flow."""
+        raise NotImplementedError
 
 
-class HvacCoordinatorConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Create the single entry."""
+class HvacCoordinatorConfigFlow(_RoomSteps, ConfigFlow, domain=DOMAIN):
+    """Initial setup. Collects the first room, so setup produces something."""
 
     VERSION = 1
+
+    def __init__(self) -> None:
+        """Initialize the flow."""
+        self._room = {}
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Create the entry. Rooms and tariff are added afterwards."""
-        if user_input is None:
-            return self.async_show_form(step_id="user", data_schema=vol.Schema({}))
+        """Start by describing the first room."""
+        return await self.async_step_room(user_input)
+
+    def _save_room(self) -> ConfigFlowResult:
+        """Create the entry with the first room in it."""
         return self.async_create_entry(
             title="HVAC Coordinator",
-            data={CONF_ROOMS: [], CONF_TARIFF_WINDOWS: []},
+            data={
+                CONF_ROOMS: [self._room],
+                CONF_TARIFF_WINDOWS: [],
+                CONF_LOCKOUT_REASONS: extend_lockout_reasons([], self._room),
+            },
         )
 
     @staticmethod
-    def async_get_options_flow(
-        config_entry: Any,
-    ) -> HvacCoordinatorOptionsFlow:
+    def async_get_options_flow(config_entry: Any) -> HvacCoordinatorOptionsFlow:
         """Return the options flow."""
         return HvacCoordinatorOptionsFlow()
 
 
-class HvacCoordinatorOptionsFlow(OptionsFlow):
+class HvacCoordinatorOptionsFlow(_RoomSteps, OptionsFlow):
     """Add, edit and remove rooms."""
 
     def __init__(self) -> None:
         """Initialize the flow."""
-        self._room: dict[str, Any] = {}
+        self._room = {}
         self._editing: str | None = None
 
     @property
@@ -150,16 +324,23 @@ class HvacCoordinatorOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         """Offer what can be done, rather than assuming a room is being added."""
         if not self._rooms:
-            # Nothing configured yet: skip the menu and go straight to adding.
             return await self.async_step_room()
         return self.async_show_menu(
-            step_id="init", menu_options=["room", "edit_room", "remove_room"]
+            step_id="init",
+            menu_options=[
+                "room",
+                "edit_room",
+                "remove_room",
+                "add_window",
+                "remove_window",
+                "outdoor",
+            ],
         )
 
     async def async_step_edit_room(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Choose a room to edit, then reuse the add steps with it prefilled."""
+        """Choose a room to edit, then reuse the room steps with it prefilled."""
         if user_input is None:
             return self.async_show_form(
                 step_id="edit_room", data_schema=self._room_choice_schema()
@@ -182,7 +363,149 @@ class HvacCoordinatorOptionsFlow(OptionsFlow):
         ]
         options = dict(self.config_entry.options)
         options[CONF_ROOMS] = remaining
+        options.setdefault(
+            CONF_TARIFF_WINDOWS, self.config_entry.data.get(CONF_TARIFF_WINDOWS, [])
+        )
         return self.async_create_entry(title="", data=options)
+
+    # ---- tariff -------------------------------------------------------
+
+    @property
+    def _windows(self) -> list[dict[str, Any]]:
+        """Tariff windows as currently configured."""
+        return list(
+            self.config_entry.options.get(
+                CONF_TARIFF_WINDOWS,
+                self.config_entry.data.get(CONF_TARIFF_WINDOWS, []),
+            )
+        )
+
+    def _stored_rate_labels(self) -> list[str]:
+        return list(
+            self.config_entry.options.get(
+                CONF_RATE_LABELS, self.config_entry.data.get(CONF_RATE_LABELS, [])
+            )
+        )
+
+    async def async_step_add_window(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Add one tariff window."""
+        errors: dict[str, str] = {}
+        schema = window_schema(known_rate_labels(self._stored_rate_labels()))
+
+        if user_input is not None:
+            window = window_from_input(user_input)
+            if window[CONF_START] == window[CONF_END] and self._windows:
+                errors["base"] = "window_whole_day"
+            else:
+                windows = sort_windows([*self._windows, window])
+                options = dict(self.config_entry.options)
+                options[CONF_TARIFF_WINDOWS] = windows
+                options[CONF_RATE_LABELS] = extend_rate_labels(
+                    self._stored_rate_labels(), window[CONF_RATE]
+                )
+                options.setdefault(CONF_ROOMS, self._rooms)
+                return self.async_create_entry(title="", data=options)
+
+        return self.async_show_form(
+            step_id="add_window",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={"schedule": self._schedule_summary()},
+        )
+
+    async def async_step_outdoor(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """The outdoor temperature feed, used by the thermal model."""
+        if user_input is None:
+            current = self.config_entry.options.get(
+                CONF_OUTDOOR_TEMPERATURE_ENTITY,
+                self.config_entry.data.get(CONF_OUTDOOR_TEMPERATURE_ENTITY),
+            )
+            schema = vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_OUTDOOR_TEMPERATURE_ENTITY
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(
+                            domain="sensor", device_class="temperature"
+                        )
+                    )
+                }
+            )
+            return self.async_show_form(
+                step_id="outdoor",
+                data_schema=self.add_suggested_values_to_schema(
+                    schema, {CONF_OUTDOOR_TEMPERATURE_ENTITY: current}
+                )
+                if current
+                else schema,
+            )
+
+        options = dict(self.config_entry.options)
+        options[CONF_OUTDOOR_TEMPERATURE_ENTITY] = user_input.get(
+            CONF_OUTDOOR_TEMPERATURE_ENTITY
+        )
+        options.setdefault(CONF_ROOMS, self._rooms)
+        options.setdefault(CONF_TARIFF_WINDOWS, self._windows)
+        return self.async_create_entry(title="", data=options)
+
+    async def async_step_remove_window(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Remove a tariff window."""
+        if not self._windows:
+            return self.async_abort(reason="no_windows")
+
+        if user_input is None:
+            return self.async_show_form(
+                step_id="remove_window",
+                data_schema=vol.Schema(
+                    {
+                        vol.Required(CONF_START): selector.SelectSelector(
+                            selector.SelectSelectorConfig(
+                                options=[
+                                    selector.SelectOptionDict(
+                                        value=str(window[CONF_START]),
+                                        label=describe_window(window),
+                                    )
+                                    for window in sort_windows(self._windows)
+                                ],
+                                mode=selector.SelectSelectorMode.DROPDOWN,
+                            )
+                        )
+                    }
+                ),
+                description_placeholders={"schedule": self._schedule_summary()},
+            )
+
+        remaining = [
+            window
+            for window in self._windows
+            if str(window[CONF_START]) != user_input[CONF_START]
+        ]
+        options = dict(self.config_entry.options)
+        options[CONF_TARIFF_WINDOWS] = remaining
+        options.setdefault(CONF_ROOMS, self._rooms)
+        return self.async_create_entry(title="", data=options)
+
+    def _schedule_summary(self) -> str:
+        """The schedule as it stands, plus any gap or overlap in it."""
+        if not self._windows:
+            return "No tariff windows configured."
+        lines = [describe_window(w) for w in sort_windows(self._windows)]
+        problems = schedule_gaps(self._windows)
+        if problems:
+            lines.append("")
+            lines.append("Incomplete — " + "; ".join(problems) + ".")
+            lines.append(
+                "The schedule is ignored until it covers the whole day exactly once."
+            )
+        return "\n".join(lines)
+
+    # ---- rooms --------------------------------------------------------
 
     def _room_choice_schema(self) -> vol.Schema:
         """A picker over the configured rooms."""
@@ -207,76 +530,34 @@ class HvacCoordinatorOptionsFlow(OptionsFlow):
         if self._editing is None:
             return {}
         return next(
-            (room for room in self._rooms if room[CONF_ROOM_ID] == self._editing),
-            {},
+            (room for room in self._rooms if room[CONF_ROOM_ID] == self._editing), {}
         )
 
-    async def async_step_room(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Collect the room's entities."""
-        if user_input is None:
-            existing = self._existing()
-            return self.async_show_form(
-                step_id="room",
-                data_schema=self.add_suggested_values_to_schema(
-                    ROOM_SCHEMA, existing
-                )
-                if existing
-                else ROOM_SCHEMA,
+    def _stored_lockout_reasons(self) -> list[str]:
+        return list(
+            self.config_entry.options.get(
+                CONF_LOCKOUT_REASONS,
+                self.config_entry.data.get(CONF_LOCKOUT_REASONS, []),
             )
-
-        self._room = {
-            CONF_ROOM_ID: _slug(user_input["name"]),
-            "name": user_input["name"],
-            CONF_CLIMATE_ENTITY: user_input[CONF_CLIMATE_ENTITY],
-            CONF_TEMPERATURE_ENTITY: user_input.get(CONF_TEMPERATURE_ENTITY),
-            CONF_HUMIDITY_ENTITY: user_input.get(CONF_HUMIDITY_ENTITY),
-            CONF_PRESENCE_ENTITY: user_input.get(CONF_PRESENCE_ENTITY),
-            CONF_SLEEP_SCHEDULE_ENTITY: user_input.get(CONF_SLEEP_SCHEDULE_ENTITY),
-            CONF_ILLUMINANCE_ENTITY: user_input.get(CONF_ILLUMINANCE_ENTITY),
-            CONF_OPENING_ENTITIES: user_input.get(CONF_OPENING_ENTITIES, []),
-            CONF_COVER_ENTITIES: user_input.get(CONF_COVER_ENTITIES, []),
-            CONF_LOCKOUT_REASON: user_input.get(CONF_LOCKOUT_REASON),
-        }
-        return await self.async_step_bands()
-
-    async def async_step_bands(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Collect the comfort bands for this room."""
-        errors: dict[str, str] = {}
-        if user_input is None:
-            existing_bands = self._existing().get(CONF_BANDS, {})
-            suggested = {
-                f"{mode}_{bound}": values[bound]
-                for mode, values in existing_bands.items()
-                for bound in (CONF_BAND_LOW, CONF_BAND_HIGH)
-                if bound in values
-            }
-            return self.async_show_form(
-                step_id="bands",
-                data_schema=self.add_suggested_values_to_schema(
-                    BANDS_SCHEMA, suggested
-                )
-                if suggested
-                else BANDS_SCHEMA,
-            )
-
-        if user_input is not None:
-            bands = _bands_from_input(user_input)
-            if any(
-                values[CONF_BAND_LOW] >= values[CONF_BAND_HIGH]
-                for values in bands.values()
-            ):
-                errors["base"] = "band_inverted"
-            else:
-                self._room[CONF_BANDS] = bands
-                return self._save_room()
-
-        return self.async_show_form(
-            step_id="bands", data_schema=BANDS_SCHEMA, errors=errors
         )
+
+    def _suggested_room(self) -> dict[str, Any]:
+        existing = self._existing()
+        if not existing:
+            return {}
+        # The tick box reflects whether the room currently has a reason.
+        return {**existing, CONF_LOCKOUT: bool(existing.get(CONF_LOCKOUT_REASON))}
+
+    def _suggested_lockout(self) -> dict[str, Any]:
+        reason = self._existing().get(CONF_LOCKOUT_REASON)
+        return {CONF_LOCKOUT_REASON: reason} if reason else {}
+
+    def _suggested_bands(self) -> dict[str, float]:
+        """A room being edited shows its own bands; a new one shows defaults."""
+        existing = self._existing().get(CONF_BANDS, {})
+        if existing:
+            return bands_as_suggestions(existing)
+        return default_band_suggestions()
 
     def _save_room(self) -> ConfigFlowResult:
         """Add or replace the room in the entry options."""
@@ -284,13 +565,13 @@ class HvacCoordinatorOptionsFlow(OptionsFlow):
         # Replace the room being edited, and any room whose name produces the
         # same id, so editing a name does not leave the old room behind.
         replaced = {self._room[CONF_ROOM_ID], self._editing}
-        rooms: list[dict[str, Any]] = [
-            room for room in self._rooms if room[CONF_ROOM_ID] not in replaced
-        ]
+        rooms = [room for room in self._rooms if room[CONF_ROOM_ID] not in replaced]
         rooms.append(self._room)
         options[CONF_ROOMS] = rooms
+        options[CONF_LOCKOUT_REASONS] = extend_lockout_reasons(
+            self._stored_lockout_reasons(), self._room
+        )
         options.setdefault(
-            CONF_TARIFF_WINDOWS,
-            self.config_entry.data.get(CONF_TARIFF_WINDOWS, []),
+            CONF_TARIFF_WINDOWS, self.config_entry.data.get(CONF_TARIFF_WINDOWS, [])
         )
         return self.async_create_entry(title="", data=options)

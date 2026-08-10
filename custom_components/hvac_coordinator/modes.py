@@ -140,15 +140,11 @@ FAN_MARGIN_HCI = 0.5
 #: 65% at 30 C are different loads. Replace when the model converges.
 DRY_MODE_RH_THRESHOLD = 65.0
 
-#: PLACEHOLDER. Room illuminance above which there is solar gain worth putting
-#: a cover in front of.
-#:
-#: This one cannot be a universal constant at all: what a sensor reads depends
-#: on where in the room it sits and what it faces. The correct signal is solar
-#: gain predicted from sun position, aspect and the Solcast forecast, which is
-#: the thermal model's job. Until then this is a crude proxy and will be wrong
-#: in rooms whose sensor is not near the window.
-SOLAR_GAIN_LUX = 2000.0
+#: How near an extreme a cover counts as already there, in percent. A blind at
+#: 3% is shut for our purposes; commanding it to 0 achieves nothing, and
+#: without this check the ordering picks covers every cycle on an already-shut
+#: room and never escalates to the next step.
+COVER_TRAVEL_MARGIN = 5.0
 
 
 def _demand_direction(mode: Mode, band: ComfortBand, hci: float) -> str | None:
@@ -165,6 +161,17 @@ def _demand_direction(mode: Mode, band: ComfortBand, hci: float) -> str | None:
     if hci < band.low:
         return "heat"
     return None
+
+
+def _covers_can_help(demand: str, position: float | None) -> bool:
+    """Whether the covers still have travel left in the useful direction."""
+    if position is None:
+        # No position reported. Command them once and let the next evaluation
+        # see the result, rather than assuming either way.
+        return True
+    if demand == "cool":
+        return position > COVER_TRAVEL_MARGIN
+    return position < (100.0 - COVER_TRAVEL_MARGIN)
 
 
 def select_actuator(
@@ -211,14 +218,26 @@ def select_actuator(
         return ActuatorStep.NONE
 
     # --- 1. Covers. Free, and they work in both directions: block gain when
-    # the room is too warm, admit it when the room is too cold. Only worth
-    # doing where there are covers and there is actually sun on the room.
+    # the room is too warm, admit it when the room is too cold.
+    #
+    # The gate is whether the sun is on this room's windows, which is geometry.
+    # Indoor light level cannot answer it: a semi-transparent blind reads
+    # bright when it is fully closed, so lux would say there is nothing to
+    # block at exactly the moment the blind is already blocking.
     if not inputs.has_covers:
         trace.rejected.append("covers: none configured for this room")
-    elif inputs.illuminance_lux is None:
-        trace.rejected.append("covers: no illuminance reading, cannot tell if sunlit")
-    elif inputs.illuminance_lux < SOLAR_GAIN_LUX:
-        trace.rejected.append("covers: no solar gain to act on")
+    elif inputs.direct_sun is None:
+        trace.rejected.append("covers: cannot tell whether the sun is on this room")
+    elif not inputs.direct_sun:
+        trace.rejected.append("covers: no sun on this room to act on")
+    elif not _covers_can_help(demand, inputs.cover_position):
+        # Already where they need to be. Saying so is what lets the ordering
+        # move on to the next step instead of choosing covers forever.
+        trace.rejected.append(
+            "covers: already closed against the gain"
+            if demand == "cool"
+            else "covers: already open to the gain"
+        )
     else:
         trace.reasons.append(
             "covers: blocking solar gain"
@@ -231,32 +250,43 @@ def select_actuator(
         # Fan and dry mode do not heat. Once covers are out, the compressor is
         # the only remaining step.
         trace.rejected.append("fan and dry: neither adds heat")
+        if not inputs.can_heat:
+            trace.rejected.append("compressor: this unit cannot heat")
+            return ActuatorStep.NONE
         trace.reasons.append("compressor: heating")
         return ActuatorStep.COMPRESSOR
 
     # --- 2. Fan. Air movement, no compressor. Worth trying only when the room
     # is marginally out of band.
     overshoot = hci - (band.low if mode is Mode.PRECOOL else band.high)
-    if overshoot <= FAN_MARGIN_HCI:
+    if not inputs.can_fan_only:
+        trace.rejected.append("fan: this unit has no fan-only mode")
+    elif overshoot <= FAN_MARGIN_HCI:
         trace.reasons.append("fan: marginally above band, air movement should carry it")
         return ActuatorStep.FAN
-
-    trace.rejected.append(
-        f"fan: {overshoot:.1f} HCI above band, beyond what air movement carries"
-    )
+    else:
+        trace.rejected.append(
+            f"fan: {overshoot:.1f} HCI above band, beyond what air movement carries"
+        )
 
     # --- 3. Dry mode. A latent-dominated load costs far less to shift with dry
     # mode on a low fan than with cooling.
-    if (
+    latent = (
         inputs.relative_humidity is not None
         and inputs.relative_humidity >= DRY_MODE_RH_THRESHOLD
-    ):
+    )
+    if not inputs.can_dry:
+        trace.rejected.append("dry: this unit has no dry mode")
+    elif latent:
         trace.reasons.append("dry: load is latent, dehumidify rather than cool")
         return ActuatorStep.DRY
-
-    trace.rejected.append("dry: load is sensible, not latent")
+    else:
+        trace.rejected.append("dry: load is sensible, not latent")
 
     # --- 4. Compressor. Everything cheaper has been ruled out above.
+    if not inputs.can_cool:
+        trace.rejected.append("compressor: this unit cannot cool")
+        return ActuatorStep.NONE
     trace.reasons.append("compressor: cooling")
     return ActuatorStep.COMPRESSOR
 

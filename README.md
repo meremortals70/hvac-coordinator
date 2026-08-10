@@ -9,8 +9,10 @@ publishes a full decision trace so nothing it does is a mystery.
 
 **It never writes to your battery.**
 
-> **Status: v0.3.0. Never installed, never run in Home Assistant.**
-> The decision logic is written and unit tested. Actuation is not yet wired —
+> **Status: v0.7.0. Complete against the design, and never run in Home
+> Assistant.** Every part described here is built: comfort index, modes,
+> actuator ordering, actuation, tariff, thermal model and demand forecast.
+> What none of it has done is run against a real air conditioner —
 > see [Known limitations](docs/known-limitations.md).
 
 ---
@@ -45,6 +47,8 @@ Everything else follows from four rules:
 | [Modes](docs/modes.md) | The seven modes and their precedence |
 | [Actuator ordering](docs/actuator-ordering.md) | Cheapest first, in detail |
 | [Tariff](docs/tariff.md) | Windows, constraints, and what they mean |
+| [Thermal model](docs/thermal-model.md) | What it learns, and how |
+| [Demand forecast](docs/demand-forecast.md) | The published contract, and why it stops there |
 | [Actions](docs/actions.md) | The two services, with examples |
 | [Entities](docs/entities.md) | What it creates and what each one reports |
 | [Data updates](docs/data-updates.md) | When it evaluates and what triggers it |
@@ -53,7 +57,6 @@ Everything else follows from four rules:
 | [Known limitations](docs/known-limitations.md) | What is not built, stated plainly |
 | [Architecture](docs/architecture.md) | How the three layers fit together |
 | [Contributing](docs/contributing.md) | Running the tests, the quality scale |
-| [Publishing](GITHUB-UPLOAD.md) | Getting this onto GitHub via the web UI |
 
 ## Quick start
 
@@ -61,7 +64,7 @@ Everything else follows from four rules:
    `config/custom_components/` directory
 2. Restart Home Assistant
 3. **Settings → Devices & Services → Add Integration → HVAC Coordinator**
-4. **Configure** to add your first room
+4. Describe your first room and set its comfort bands
 
 Full detail in [Installation](docs/installation.md).
 
