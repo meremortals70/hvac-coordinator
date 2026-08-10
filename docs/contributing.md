@@ -9,7 +9,7 @@ no dependencies at all:
 python3 -m unittest discover -s tests -p "test_core.py" -v
 ```
 
-111 tests covering the comfort index and its inverse, mode precedence, the full
+128 tests covering the comfort index and its inverse, mode precedence, the full
 actuator ordering, tariff windows and constraint handling, and setpoint
 clamping, the setup form helpers, the seeded band defaults and lockout reason
 handling.
@@ -44,6 +44,7 @@ import resolves to `Any`.
 | `tariff.py` | No — windows and constraints |
 | `thermal.py` | No — the learned model |
 | `forecast.py` | No — the demand forecast |
+| `sun.py` | No — is the sun on this room's windows |
 | `forms.py` | No — shaping setup forms into stored configuration |
 | `store.py` | Yes — learned state persistence |
 | `actuator.py` | Yes — turns decisions into service calls |
@@ -56,6 +57,13 @@ import resolves to `Any`.
 **Decisions belong in the pure modules.** If a change puts a decision in
 `coordinator.py`, it has gone in the wrong place — that file gathers inputs and
 publishes results, nothing more.
+
+## Versioning
+
+`0.MINOR.PATCH`. The minor number goes up for a release with new behaviour;
+the patch number for a fix to a released version. Internal iterations between
+releases do not get their own version — the version in `manifest.json` is what
+was published, not how many times it was rebuilt.
 
 ## Quality scale
 

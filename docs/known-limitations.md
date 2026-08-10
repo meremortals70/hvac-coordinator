@@ -5,8 +5,8 @@ you were told about.
 
 ## Nothing has been run
 
-**v0.3.0 has never been installed in Home Assistant, never loaded, and never
-actuated anything.** The decision logic is unit tested — 43 tests over the pure
+**v0.4.0 has never been installed in Home Assistant, never loaded, and never
+actuated anything.** The decision logic is unit tested — 128 tests over the pure
 modules — but the Home Assistant surface has not been exercised. Treat the first
 install as a test.
 
@@ -65,11 +65,18 @@ entirely on where it sits. Detail in [Actuator ordering](actuator-ordering.md).
 There is no bulk import and no way to copy a schedule between installations.
 Six windows is six trips through the form.
 
-## Sun detection falls back to the whole house
+## Sun detection is one compass direction per room
 
-Without a per-room sun sensor, the controller uses whether the sun is above the
-horizon. That is true of every room at once, so a south-facing room will be
-treated as sunlit all day. Configure the per-room sensor.
+The controller works out sun-on-glass from the sun's position and the direction
+the room's windows face. That is right for a room with windows on one wall and
+wrong for a corner room, a room with a verandah, or one shaded by a tree at
+certain hours.
+
+Where that matters, point the room's sun-on-window setting at your own binary
+sensor instead — it overrides the calculation entirely.
+
+A room with no direction and no sensor never uses its blinds, because the
+controller will not move them on a guess.
 
 ## The comfort index is one opinion
 

@@ -30,9 +30,11 @@ from .const import (
     CONF_SLEEP_SCHEDULE_ENTITY,
     CONF_START,
     CONF_TEMPERATURE_ENTITY,
+    CONF_WINDOW_DIRECTION,
     DEFAULT_BANDS,
     DEFAULT_LOCKOUT_REASONS,
     DEFAULT_RATE_LABELS,
+    NOT_LOCKED_OUT,
 )
 from .models import Mode
 
@@ -63,10 +65,25 @@ def room_from_input(user_input: dict[str, Any]) -> dict[str, Any]:
         CONF_SLEEP_SCHEDULE_ENTITY: user_input.get(CONF_SLEEP_SCHEDULE_ENTITY),
         CONF_ILLUMINANCE_ENTITY: user_input.get(CONF_ILLUMINANCE_ENTITY),
         CONF_DIRECT_SUN_ENTITY: user_input.get(CONF_DIRECT_SUN_ENTITY),
+        CONF_WINDOW_DIRECTION: user_input.get(CONF_WINDOW_DIRECTION),
         CONF_OPENING_ENTITIES: user_input.get(CONF_OPENING_ENTITIES, []),
         CONF_COVER_ENTITIES: user_input.get(CONF_COVER_ENTITIES, []),
-        CONF_LOCKOUT_REASON: None,
+        CONF_LOCKOUT_REASON: _lockout_reason(user_input.get(CONF_LOCKOUT_REASON)),
     }
+
+
+def _lockout_reason(chosen: str | None) -> str | None:
+    """The stored lockout reason, or None when the room is not locked out.
+
+    One dropdown answers both questions. The first option means not locked out,
+    so there is no toggle to tick and no second screen to reach.
+    """
+    if chosen is None:
+        return None
+    reason = str(chosen).strip()
+    if not reason or reason == NOT_LOCKED_OUT:
+        return None
+    return reason
 
 
 def bands_from_input(user_input: dict[str, Any]) -> dict[str, dict[str, float]]:
@@ -107,8 +124,8 @@ def default_band_suggestions() -> dict[str, float]:
 
 
 def known_lockout_reasons(stored: list[str]) -> list[str]:
-    """Built-in reasons plus any the user has added, deduplicated and sorted."""
-    return sorted({*DEFAULT_LOCKOUT_REASONS, *stored})
+    """The lockout dropdown: not-locked-out first, then every known reason."""
+    return [NOT_LOCKED_OUT, *sorted({*DEFAULT_LOCKOUT_REASONS, *stored})]
 
 
 def extend_lockout_reasons(stored: list[str], room: dict[str, Any]) -> list[str]:
@@ -118,7 +135,12 @@ def extend_lockout_reasons(stored: list[str], room: dict[str, Any]) -> list[str]
     would leave stale copies behind if the built-in list ever changed.
     """
     reason = room.get(CONF_LOCKOUT_REASON)
-    if not reason or reason in DEFAULT_LOCKOUT_REASONS or reason in stored:
+    if (
+        not reason
+        or reason == NOT_LOCKED_OUT
+        or reason in DEFAULT_LOCKOUT_REASONS
+        or reason in stored
+    ):
         return sorted(stored)
     return sorted([*stored, reason])
 

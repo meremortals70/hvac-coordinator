@@ -555,8 +555,15 @@ class TestClamping(unittest.TestCase):
         self.assertFalse(any("clamped" in r for r in trace.rejected))
 
 
-class TestPrecoolRespectsOccupancy(unittest.TestCase):
-    def test_precool_does_not_run_in_an_unoccupied_room(self):
+class TestPrecoolIgnoresPresentOccupancy(unittest.TestCase):
+    """Precool banks against a load that is coming, not one that is here.
+
+    The free window is the middle of the day, when the room is usually empty.
+    The load it is banking against arrives in the evening. Gating precool on
+    someone being in the room now would stop it doing the one job it has.
+    """
+
+    def test_precool_runs_in_an_empty_room(self):
         trace = evaluate_room(
             room(),
             RoomInputs(
@@ -568,9 +575,22 @@ class TestPrecoolRespectsOccupancy(unittest.TestCase):
                 forecast_demand_ahead=True,
             ),
         )
+        self.assertIs(trace.mode, Mode.PRECOOL)
+        self.assertIsNot(trace.actuator, ActuatorStep.NONE)
+
+    def test_precool_still_needs_a_load_coming(self):
+        trace = evaluate_room(
+            room(),
+            RoomInputs(
+                now=NOW,
+                temperature_c=30.0,
+                relative_humidity=60.0,
+                presence=False,
+                precool_opportunity=True,
+                forecast_demand_ahead=False,
+            ),
+        )
         self.assertIs(trace.mode, Mode.UNOCCUPIED)
-        self.assertIs(trace.actuator, ActuatorStep.NONE)
-        self.assertTrue(any("unoccupied" in r for r in trace.rejected))
 
 
 class TestSleepWithFailedSensor(unittest.TestCase):
@@ -1336,3 +1356,95 @@ class TestDemandForecast(unittest.TestCase):
         )
         forecast = _forecast.build_forecast(NOW, [self._room_input(), fresh], [], 8)
         self.assertFalse(forecast.fully_modelled)
+
+
+_sun = importlib.import_module("hvac_core.sun")
+
+
+class TestSunGeometry(unittest.TestCase):
+    """Sun on the glass, from position and window direction. No sensor needed."""
+
+    def test_a_north_window_gets_midday_sun_in_the_southern_hemisphere(self):
+        # Brisbane midday: sun due north, high.
+        self.assertTrue(_sun.sun_on_window(0.0, 60.0, _sun.WINDOW_DIRECTIONS["north"]))
+
+    def test_a_south_window_does_not_get_that_sun(self):
+        self.assertFalse(_sun.sun_on_window(0.0, 60.0, _sun.WINDOW_DIRECTIONS["south"]))
+
+    def test_a_west_window_gets_the_afternoon(self):
+        self.assertTrue(_sun.sun_on_window(270.0, 25.0, _sun.WINDOW_DIRECTIONS["west"]))
+
+    def test_a_west_window_does_not_get_the_morning(self):
+        self.assertFalse(_sun.sun_on_window(90.0, 25.0, _sun.WINDOW_DIRECTIONS["west"]))
+
+    def test_the_sun_below_the_horizon_is_on_no_window(self):
+        for direction in _sun.WINDOW_DIRECTIONS.values():
+            self.assertFalse(_sun.sun_on_window(180.0, -5.0, direction))
+
+    def test_a_sun_barely_up_does_not_count(self):
+        """One degree of elevation is not worth moving a blind for."""
+        self.assertFalse(_sun.sun_on_window(90.0, 1.0, _sun.WINDOW_DIRECTIONS["east"]))
+
+    def test_the_edge_of_the_acceptance_angle(self):
+        east = _sun.WINDOW_DIRECTIONS["east"]
+        self.assertTrue(_sun.sun_on_window(0.0, 30.0, east))
+        self.assertFalse(_sun.sun_on_window(359.0, 30.0, east))
+
+    def test_wrapping_past_north_is_handled(self):
+        north = _sun.WINDOW_DIRECTIONS["north"]
+        self.assertTrue(_sun.sun_on_window(350.0, 30.0, north))
+        self.assertTrue(_sun.sun_on_window(10.0, 30.0, north))
+
+    def test_no_direction_configured_means_no_answer(self):
+        """Not 'no sun'. The evaluator must not move covers on a guess."""
+        self.assertIsNone(_sun.sun_on_window(180.0, 45.0, None))
+
+    def test_no_sun_position_means_no_answer(self):
+        self.assertIsNone(_sun.sun_on_window(None, None, 0.0))
+
+    def test_every_offered_direction_resolves(self):
+        for name in _sun.WINDOW_DIRECTIONS:
+            self.assertIsNotNone(_sun.azimuth_for_direction(name))
+        self.assertIsNone(_sun.azimuth_for_direction("upwards"))
+
+
+class TestLockoutIsOneField(unittest.TestCase):
+    """One dropdown answers both questions: no toggle, no second screen."""
+
+    def test_not_locked_out_stores_no_reason(self):
+        room = _forms.room_from_input(
+            {
+                "name": "Office",
+                "climate_entity_id": "climate.o",
+                "lockout_reason": _const.NOT_LOCKED_OUT,
+            }
+        )
+        self.assertIsNone(room["lockout_reason"])
+
+    def test_choosing_a_reason_locks_the_room_out(self):
+        room = _forms.room_from_input(
+            {
+                "name": "Study",
+                "climate_entity_id": "climate.s",
+                "lockout_reason": "Under renovation",
+            }
+        )
+        self.assertEqual(room["lockout_reason"], "Under renovation")
+
+    def test_the_not_locked_out_option_comes_first(self):
+        options = _forms.known_lockout_reasons([])
+        self.assertEqual(options[0], _const.NOT_LOCKED_OUT)
+
+    def test_not_locked_out_is_never_stored_as_a_custom_reason(self):
+        self.assertEqual(
+            _forms.extend_lockout_reasons(
+                [], {"lockout_reason": _const.NOT_LOCKED_OUT}
+            ),
+            [],
+        )
+
+    def test_blank_is_treated_as_not_locked_out(self):
+        room = _forms.room_from_input(
+            {"name": "Office", "climate_entity_id": "climate.o", "lockout_reason": "  "}
+        )
+        self.assertIsNone(room["lockout_reason"])

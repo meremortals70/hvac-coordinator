@@ -15,11 +15,7 @@ rules:
       Evaluation is driven by state changes on the entities each room reads,
       with a 30 second interval as a backstop. Nothing is polled from a device
       or service.
-  brands:
-    status: exempt
-    comment: |
-      The brands repository covers integrations in core. This is a custom
-      integration and has no brand entry.
+  brands: done
   common-modules: done
   config-flow-test-coverage: todo
   config-flow: done

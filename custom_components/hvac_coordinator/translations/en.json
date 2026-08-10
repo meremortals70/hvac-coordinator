@@ -3,38 +3,32 @@
     "step": {
       "room": {
         "title": "Add your first room",
-        "description": "Which air conditioner this room uses, and which sensors describe it.\n\n\"Sun on this room's windows\" should be a sensor that knows the sun's position relative to the glass \u2014 Adaptive Cover Pro publishes a \"Sun Infront\" sensor per cover. Light level cannot answer this: a semi-transparent blind reads bright when it is fully closed. Without it, the controller falls back to whether the sun is above the horizon, which is true of the whole house.\n\nThe sleep schedule is what puts the room on its sleep band; without one the sleep band is never used. Only tick lockout if this room must never be actuated.",
+        "description": "Only the room name and the air conditioner are required. Leave anything you do not have empty.\n\n**Which way the windows face** lets the controller work out when the sun is actually on the glass, which is what decides whether closing a blind would achieve anything. Light level cannot answer that \u2014 a semi-transparent blind reads bright when it is fully closed. It needs no extra sensor: it uses the sun position Home Assistant already knows.\n\n**Lockout** means this room is never actuated. Leave it on \"Not locked out\" unless you mean it. The reason you choose is shown in the room's decision trace, and a reason you type is offered for every room afterwards.",
         "data": {
           "name": "Room name",
           "climate_entity_id": "Air conditioner",
-          "temperature_entity_id": "Temperature sensor",
-          "humidity_entity_id": "Humidity sensor",
-          "presence_entity_id": "Presence sensor",
-          "illuminance_entity_id": "Illuminance sensor (recorded, not acted on)",
-          "opening_entity_ids": "Windows and doors",
-          "cover_entity_ids": "Blinds",
-          "sleep_schedule_entity_id": "Sleep schedule",
-          "lockout": "Lock this room out",
-          "direct_sun_entity_id": "Sun on this room's windows"
+          "temperature_entity_id": "Temperature sensor (optional)",
+          "humidity_entity_id": "Humidity sensor (optional)",
+          "presence_entity_id": "Presence sensor (optional)",
+          "sleep_schedule_entity_id": "Sleep schedule (optional)",
+          "illuminance_entity_id": "Illuminance sensor (optional, recorded only)",
+          "window_direction": "Which way the windows face (optional)",
+          "direct_sun_entity_id": "Sun-on-window sensor (optional, overrides the above)",
+          "opening_entity_ids": "Windows and doors (optional)",
+          "cover_entity_ids": "Blinds (optional)",
+          "lockout_reason": "Lockout"
         }
       },
       "bands": {
         "title": "Comfort bands",
-        "description": "The comfort band for this room, in HCI. This is the only comfort setting there is \u2014 you never set a temperature. These are starting values, already filled in; change them freely.\n\nClear both boxes for a mode and the room is never actuated in that mode. An office with no sleeping hours can leave the sleep pair empty. Precool needs the demand forecast, which is not built yet.\n\nFor reference: comfortable is roughly 23.5 to 27.5 HCI. Precool drives to the lower bound; every other mode targets the middle of the band.",
+        "description": "The comfort band for this room, in HCI \u2014 not degrees. This is the only comfort setting there is; you never set a temperature. These values are already filled in and are meant to be changed.\n\nRoughly: below 20 is cold, 20\u201323.5 cool, 23.5\u201327.5 comfortable, 27.5\u201331 warm, above 31 hot.\n\nClear both boxes of a mode you do not want. An office with no sleeping hours should clear the sleep pair.",
         "data": {
           "occupied_low": "Occupied \u2014 lower bound",
           "occupied_high": "Occupied \u2014 upper bound",
-          "sleep_low": "Sleep \u2014 lower bound",
-          "sleep_high": "Sleep \u2014 upper bound",
-          "precool_low": "Precool \u2014 lower bound",
-          "precool_high": "Precool \u2014 upper bound"
-        }
-      },
-      "lockout": {
-        "title": "Lockout reason",
-        "description": "Why this room must never be actuated. Pick a reason or type your own \u2014 a reason you type is offered for every room from then on. It appears in the room's decision trace, so a room that is doing nothing always says why.",
-        "data": {
-          "lockout_reason": "Reason"
+          "sleep_low": "Sleep \u2014 lower bound (optional)",
+          "sleep_high": "Sleep \u2014 upper bound (optional)",
+          "precool_low": "Precool \u2014 lower bound (optional)",
+          "precool_high": "Precool \u2014 upper bound (optional)"
         }
       }
     },
@@ -49,31 +43,32 @@
     "step": {
       "room": {
         "title": "Room",
-        "description": "Which air conditioner this room uses, and which sensors describe it.\n\n\"Sun on this room's windows\" should be a sensor that knows the sun's position relative to the glass \u2014 Adaptive Cover Pro publishes a \"Sun Infront\" sensor per cover. Light level cannot answer this: a semi-transparent blind reads bright when it is fully closed. Without it, the controller falls back to whether the sun is above the horizon, which is true of the whole house.\n\nThe sleep schedule is what puts the room on its sleep band; without one the sleep band is never used. Only tick lockout if this room must never be actuated.",
+        "description": "Only the room name and the air conditioner are required. Leave anything you do not have empty.\n\n**Which way the windows face** lets the controller work out when the sun is actually on the glass, which is what decides whether closing a blind would achieve anything. Light level cannot answer that \u2014 a semi-transparent blind reads bright when it is fully closed. It needs no extra sensor: it uses the sun position Home Assistant already knows.\n\n**Lockout** means this room is never actuated. Leave it on \"Not locked out\" unless you mean it. The reason you choose is shown in the room's decision trace, and a reason you type is offered for every room afterwards.",
         "data": {
           "name": "Room name",
           "climate_entity_id": "Air conditioner",
-          "temperature_entity_id": "Temperature sensor",
-          "humidity_entity_id": "Humidity sensor",
-          "presence_entity_id": "Presence sensor",
-          "illuminance_entity_id": "Illuminance sensor (recorded, not acted on)",
-          "opening_entity_ids": "Windows and doors",
-          "cover_entity_ids": "Blinds",
-          "sleep_schedule_entity_id": "Sleep schedule",
-          "lockout": "Lock this room out",
-          "direct_sun_entity_id": "Sun on this room's windows"
+          "temperature_entity_id": "Temperature sensor (optional)",
+          "humidity_entity_id": "Humidity sensor (optional)",
+          "presence_entity_id": "Presence sensor (optional)",
+          "sleep_schedule_entity_id": "Sleep schedule (optional)",
+          "illuminance_entity_id": "Illuminance sensor (optional, recorded only)",
+          "window_direction": "Which way the windows face (optional)",
+          "direct_sun_entity_id": "Sun-on-window sensor (optional, overrides the above)",
+          "opening_entity_ids": "Windows and doors (optional)",
+          "cover_entity_ids": "Blinds (optional)",
+          "lockout_reason": "Lockout"
         }
       },
       "bands": {
         "title": "Comfort bands",
-        "description": "The comfort band for this room, in HCI. This is the only comfort setting there is \u2014 you never set a temperature. These are starting values, already filled in; change them freely.\n\nClear both boxes for a mode and the room is never actuated in that mode. An office with no sleeping hours can leave the sleep pair empty. Precool needs the demand forecast, which is not built yet.\n\nFor reference: comfortable is roughly 23.5 to 27.5 HCI. Precool drives to the lower bound; every other mode targets the middle of the band.",
+        "description": "The comfort band for this room, in HCI \u2014 not degrees. This is the only comfort setting there is; you never set a temperature. These values are already filled in and are meant to be changed.\n\nRoughly: below 20 is cold, 20\u201323.5 cool, 23.5\u201327.5 comfortable, 27.5\u201331 warm, above 31 hot.\n\nClear both boxes of a mode you do not want. An office with no sleeping hours should clear the sleep pair.",
         "data": {
           "occupied_low": "Occupied \u2014 lower bound",
           "occupied_high": "Occupied \u2014 upper bound",
-          "sleep_low": "Sleep \u2014 lower bound",
-          "sleep_high": "Sleep \u2014 upper bound",
-          "precool_low": "Precool \u2014 lower bound",
-          "precool_high": "Precool \u2014 upper bound"
+          "sleep_low": "Sleep \u2014 lower bound (optional)",
+          "sleep_high": "Sleep \u2014 upper bound (optional)",
+          "precool_low": "Precool \u2014 lower bound (optional)",
+          "precool_high": "Precool \u2014 upper bound (optional)"
         }
       },
       "init": {
@@ -101,13 +96,6 @@
           "room_id": "Room"
         }
       },
-      "lockout": {
-        "title": "Lockout reason",
-        "description": "Why this room must never be actuated. Pick a reason or type your own \u2014 a reason you type is offered for every room from then on. It appears in the room's decision trace, so a room that is doing nothing always says why.",
-        "data": {
-          "lockout_reason": "Reason"
-        }
-      },
       "add_window": {
         "title": "Add a tariff window",
         "description": "Windows must cover the whole day exactly once, with no gaps and no overlaps. A window may run past midnight. The schedule is ignored until it is complete.\n\nThe rate is a label, not a price \u2014 this controller does no arithmetic on cost. Constraints are absolute rules, never traded against comfort. Constraints it does not act on itself are passed through and reported, for whichever system owns that actuator.\n\nUntick coasting for a window where the room should be held even if the model says it would drift within band unaided \u2014 a cheap window where a battery is charging, for instance.\n\nCurrent schedule:\n{schedule}",
@@ -115,7 +103,7 @@
           "start": "Starts at",
           "end": "Ends at",
           "rate": "Rate label",
-          "constraints": "Constraints",
+          "constraints": "Constraints (optional)",
           "coasting_permitted": "Coasting permitted in this window"
         }
       },
@@ -130,7 +118,7 @@
         "title": "Outdoor temperature",
         "description": "The outdoor temperature the thermal model learns against. Without it the model cannot learn heat loss, so rooms never coast and the demand forecast falls back to an assumed duty cycle.\n\nOne feed serves the whole house.",
         "data": {
-          "outdoor_temperature_entity_id": "Outdoor temperature sensor"
+          "outdoor_temperature_entity_id": "Outdoor temperature sensor (optional)"
         }
       }
     },
@@ -206,6 +194,20 @@
     "room_without_bands": {
       "title": "Rooms with no comfort bands",
       "description": "{rooms} have no comfort bands configured, so they will never be actuated. Add bands from Configure, or set a lockout reason if that is deliberate."
+    }
+  },
+  "selector": {
+    "window_direction": {
+      "options": {
+        "north": "North",
+        "north_east": "North-east",
+        "east": "East",
+        "south_east": "South-east",
+        "south": "South",
+        "south_west": "South-west",
+        "west": "West",
+        "north_west": "North-west"
+      }
     }
   }
 }

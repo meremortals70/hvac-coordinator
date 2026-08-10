@@ -1,83 +1,139 @@
 # HVAC Coordinator
 
 A Home Assistant integration that decides what your air conditioning should be
-doing, room by room, and tells you why.
-
-It holds each room to a comfort band, works through the cheap actuators before
-the expensive ones, respects your tariff's constraints as absolute rules, and
-publishes a full decision trace so nothing it does is a mystery.
+doing, room by room, and tells you exactly why.
 
 **It never writes to your battery.**
 
-> **Status: v0.7.0. Complete against the design, and never run in Home
-> Assistant.** Every part described here is built: comfort index, modes,
-> actuator ordering, actuation, tariff, thermal model and demand forecast.
-> What none of it has done is run against a real air conditioner —
-> see [Known limitations](docs/known-limitations.md).
+> ### Status: v0.4.0 — not yet proven
+> Everything described here is built and unit tested. None of it has run for
+> long against real hardware. Treat your first week as a test and read
+> [Known limitations](docs/known-limitations.md) before you rely on it.
 
 ---
 
-## What it does
+## What problem this solves
 
-You tell it how a room should *feel*. It works out what to ask the air
-conditioner for.
+A normal thermostat holds a temperature. That is the wrong target in a humid
+climate, and it is the wrong *method* when you have blinds, a fan and a dry mode
+sitting there costing nothing.
 
-That is the whole idea. You never set a setpoint. You set one comfort band per
-room per mode, and the controller derives the dry bulb target from that band and
-the measured humidity — so the same band produces a different setpoint on a
-humid night than a dry one.
+This does two things differently.
 
-Everything else follows from four rules:
+**You say how a room should feel, not what temperature it should be.** You set
+a comfort band once. The controller works out what to actually ask the air
+conditioner for, adjusting for humidity — so the same band produces a cooler
+setpoint on a muggy night than a dry one, automatically.
 
-1. **Comfort is the constraint, not the variable.** Cost never narrows the band.
-2. **An unoccupied room is off.** Not a wider band. Off.
-3. **Cheapest actuator first.** Covers, then fan, then dry, then compressor —
-   and every step skipped is recorded with the reason.
-4. **Tariff constraints are absolute.** They are never traded against comfort or
-   price at runtime.
+**It spends the cheap things first.** Before the compressor runs it will close a
+blind against the sun, or run the fan, or use dry mode if the problem is
+humidity rather than heat. Every step it skips is recorded with the reason, so
+you can see the decision rather than guess at it.
 
-## Documentation
-
-| Document | What is in it |
-|---|---|
-| [Use cases](docs/use-cases.md) | What this is for, and what it is not for |
-| [Installation](docs/installation.md) | Installing, configuring and removing |
-| [Configuration](docs/configuration.md) | Every setting, and why there are so few |
-| [Comfort index](docs/comfort-index.md) | The index, the maths, and the band table |
-| [Modes](docs/modes.md) | The seven modes and their precedence |
-| [Actuator ordering](docs/actuator-ordering.md) | Cheapest first, in detail |
-| [Tariff](docs/tariff.md) | Windows, constraints, and what they mean |
-| [Thermal model](docs/thermal-model.md) | What it learns, and how |
-| [Demand forecast](docs/demand-forecast.md) | The published contract, and why it stops there |
-| [Actions](docs/actions.md) | The two services, with examples |
-| [Entities](docs/entities.md) | What it creates and what each one reports |
-| [Data updates](docs/data-updates.md) | When it evaluates and what triggers it |
-| [Examples](docs/examples.md) | Working automations |
-| [Troubleshooting](docs/troubleshooting.md) | When it does something you did not expect |
-| [Known limitations](docs/known-limitations.md) | What is not built, stated plainly |
-| [Architecture](docs/architecture.md) | How the three layers fit together |
-| [Contributing](docs/contributing.md) | Running the tests, the quality scale |
+---
 
 ## Quick start
 
-1. Copy `custom_components/hvac_coordinator/` into your Home Assistant
-   `config/custom_components/` directory
-2. Restart Home Assistant
-3. **Settings → Devices & Services → Add Integration → HVAC Coordinator**
-4. Describe your first room and set its comfort bands
+**1. Install it** — see [Installation](docs/installation.md). If you have never
+added a HACS custom repository, that page walks through it click by click.
 
-Full detail in [Installation](docs/installation.md).
+**2. Add the integration.** Settings → Devices & Services → Add Integration →
+HVAC Coordinator. It asks about your first room straight away.
+
+**3. Fill in the room.** Only two fields are required: a name, and the air
+conditioner. Everything else is optional and marked as such — add what you have.
+
+**4. Set the comfort band.** It arrives pre-filled with sensible numbers. Change
+them if you disagree.
+
+That is a working room. Add more, and your tariff, from **Configure** on the
+integration afterwards.
+
+---
+
+## What you get, per room
+
+| Entity | Shows |
+|---|---|
+| Mode | What the room is doing, and the full reasoning in its attributes |
+| Comfort index | How the room actually feels, in HCI |
+| Target dry bulb | What the air conditioner is being asked for |
+
+Plus one for the whole house: **Demand forecast** — how much energy the air
+conditioning expects to want over the next eight hours, for your battery
+automations to read.
+
+---
+
+## The ideas behind it
+
+**Comfort is a constraint, not a variable.** Cost never narrows your comfort
+band. The tariff decides *when* to bank energy and *which* actuator to use —
+never whether you get to be comfortable.
+
+**An unoccupied room is off.** Not held at a wider band. Off. A heading-home
+request brings it back, and so does a precool window when a load is coming.
+
+**Cheapest actuator first.** Blinds, then fan, then dry, then compressor.
+
+**Every decision is explained.** Both what it did and what it decided against.
+
+---
+
+## Documentation
+
+**Start here**
+
+| | |
+|---|---|
+| [Use cases](docs/use-cases.md) | Whether this suits your house at all |
+| [Installation](docs/installation.md) | Installing and setting up, step by step |
+| [Configuration](docs/configuration.md) | Every setting, and why there are so few |
+
+**How it decides**
+
+| | |
+|---|---|
+| [Comfort index](docs/comfort-index.md) | The scale, the maths, the band table |
+| [Modes](docs/modes.md) | The seven modes and their precedence |
+| [Actuator ordering](docs/actuator-ordering.md) | Cheapest first, in detail |
+| [Behaviour](docs/behaviour.md) | What happens when a window opens, when coasting ends, and other flows |
+| [Tariff](docs/tariff.md) | Windows, constraints, what they mean |
+| [Thermal model](docs/thermal-model.md) | What it learns about your house |
+| [Demand forecast](docs/demand-forecast.md) | The battery contract, and why it stops there |
+
+**Living with it**
+
+| | |
+|---|---|
+| [Entities](docs/entities.md) | What it creates and what each reports |
+| [Actions](docs/actions.md) | The two services |
+| [Examples](docs/examples.md) | Working automations |
+| [Troubleshooting](docs/troubleshooting.md) | When it does something unexpected |
+| [Known limitations](docs/known-limitations.md) | What it does not do, stated plainly |
+
+**Under the bonnet**
+
+| | |
+|---|---|
+| [Architecture](docs/architecture.md) | The layer model and the settled decisions |
+| [Data updates](docs/data-updates.md) | When it evaluates, and what triggers it |
+| [Contributing](docs/contributing.md) | Tests, structure, quality scale |
+
+---
 
 ## Requirements
 
-- Home Assistant 2026.6.0 or later
+- Home Assistant **2026.6.0** or later
 - A `climate` entity per room
-- Temperature and humidity sensors for each room you want controlled
+- Ideally a temperature and humidity sensor per room — without both, that room
+  reports no comfort index and is never actuated
 
-Nothing else is required. Presence, illuminance, openings, covers and a sleep
-schedule each unlock behaviour if present, and are optional if not.
+Presence, blinds, window sensors, a sleep schedule and an outdoor temperature
+feed each unlock behaviour if you have them, and are optional if you do not.
+
+No external dependencies. No network calls. No cloud account.
 
 ## Licence
 
-Apache 2.0. See [ATTRIBUTION.md](ATTRIBUTION.md) for what this project borrows
-and from where.
+Apache 2.0. See [ATTRIBUTION.md](ATTRIBUTION.md).

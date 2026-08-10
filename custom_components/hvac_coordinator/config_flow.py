@@ -32,7 +32,6 @@ from .const import (
     CONF_END,
     CONF_HUMIDITY_ENTITY,
     CONF_ILLUMINANCE_ENTITY,
-    CONF_LOCKOUT,
     CONF_LOCKOUT_REASON,
     CONF_LOCKOUT_REASONS,
     CONF_OPENING_ENTITIES,
@@ -46,8 +45,9 @@ from .const import (
     CONF_START,
     CONF_TARIFF_WINDOWS,
     CONF_TEMPERATURE_ENTITY,
+    CONF_WINDOW_DIRECTION,
     DOMAIN,
-    FALLBACK_LOCKOUT_REASON,
+    NOT_LOCKED_OUT,
 )
 from .forms import (
     BAND_MODES,
@@ -65,6 +65,7 @@ from .forms import (
     sort_windows,
     window_from_input,
 )
+from .sun import WINDOW_DIRECTIONS
 from .tariff import KNOWN_CONSTRAINTS
 
 ROOM_SCHEMA = vol.Schema(
@@ -99,33 +100,39 @@ ROOM_SCHEMA = vol.Schema(
         vol.Optional(CONF_COVER_ENTITIES): selector.EntitySelector(
             selector.EntitySelectorConfig(domain="cover", multiple=True)
         ),
-        # A tick box rather than a free text field. Text alone is too easy to
-        # put something in by accident, and an accidental lockout is a room
-        # that silently never runs.
-        vol.Optional(CONF_LOCKOUT, default=False): selector.BooleanSelector(),
     }
 )
 
 
-def lockout_schema(known_reasons: list[str]) -> vol.Schema:
-    """The lockout reason picker, offering the reasons already in use.
+def room_schema(lockout_reasons: list[str]) -> vol.Schema:
+    """The room form, with the lockout dropdown built from known reasons.
 
-    custom_value allows a reason that is not in the list to be typed. Anything
-    typed is added to the entry's reason list, so it is offered for every room
-    from then on.
+    Lockout is one field, not a tick box and a second screen. The first option
+    means the room is not locked out, so choosing a reason is the same action
+    as switching lockout on, and the reason can never be set by accident
+    because it is never a free text box.
     """
-    return vol.Schema(
+    return ROOM_SCHEMA.extend(
         {
-            vol.Required(CONF_LOCKOUT_REASON): selector.SelectSelector(
+            vol.Optional(CONF_WINDOW_DIRECTION): selector.SelectSelector(
                 selector.SelectSelectorConfig(
-                    options=known_reasons,
+                    options=list(WINDOW_DIRECTIONS),
+                    translation_key="window_direction",
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional(
+                CONF_LOCKOUT_REASON, default=NOT_LOCKED_OUT
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=lockout_reasons,
                     custom_value=True,
                     mode=selector.SelectSelectorMode.DROPDOWN,
-                    sort=True,
                 )
-            )
+            ),
         }
     )
+
 
 BANDS_SCHEMA = vol.Schema(
     {
@@ -203,44 +210,16 @@ class _RoomSteps:
     ) -> ConfigFlowResult:
         """Collect the room and the entities that describe it."""
         if user_input is None:
-            suggested = self._suggested_room()
+            schema = room_schema(known_lockout_reasons(self._stored_lockout_reasons()))
             return self.async_show_form(  # type: ignore[attr-defined,no-any-return]
                 step_id="room",
                 data_schema=self.add_suggested_values_to_schema(  # type: ignore[attr-defined]
-                    ROOM_SCHEMA, suggested
-                )
-                if suggested
-                else ROOM_SCHEMA,
+                    schema, self._suggested_room()
+                ),
             )
 
         self._room = room_from_input(user_input)
-        if user_input.get(CONF_LOCKOUT):
-            return await self.async_step_lockout()
         return await self.async_step_bands()
-
-    async def async_step_lockout(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Why this room is locked out. Only reached when the box was ticked."""
-        if user_input is None:
-            suggested = self._suggested_lockout()
-            schema = lockout_schema(self._known_lockout_reasons())
-            return self.async_show_form(  # type: ignore[attr-defined,no-any-return]
-                step_id="lockout",
-                data_schema=self.add_suggested_values_to_schema(  # type: ignore[attr-defined]
-                    schema, suggested
-                )
-                if suggested
-                else schema,
-            )
-
-        reason = str(user_input[CONF_LOCKOUT_REASON]).strip()
-        self._room[CONF_LOCKOUT_REASON] = reason or FALLBACK_LOCKOUT_REASON
-        return await self.async_step_bands()
-
-    def _suggested_lockout(self) -> dict[str, Any]:
-        """Prefill the reason when editing a room that is already locked out."""
-        return {}
 
     async def async_step_bands(
         self, user_input: dict[str, Any] | None = None
@@ -545,8 +524,10 @@ class HvacCoordinatorOptionsFlow(_RoomSteps, OptionsFlow):
         existing = self._existing()
         if not existing:
             return {}
-        # The tick box reflects whether the room currently has a reason.
-        return {**existing, CONF_LOCKOUT: bool(existing.get(CONF_LOCKOUT_REASON))}
+        return {
+            **existing,
+            CONF_LOCKOUT_REASON: existing.get(CONF_LOCKOUT_REASON) or NOT_LOCKED_OUT,
+        }
 
     def _suggested_lockout(self) -> dict[str, Any]:
         reason = self._existing().get(CONF_LOCKOUT_REASON)

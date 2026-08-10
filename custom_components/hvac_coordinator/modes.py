@@ -79,18 +79,17 @@ def evaluate_mode(
 
     base = _occupancy_mode(inputs, trace)
 
-    # Precool banks thermal mass in a room that is going to be lived in. An
-    # unoccupied room is off, and precooling one would spend energy cooling a
-    # room nobody is in.
+    # Precool banks thermal mass in the building against a load that is coming
+    # later. Present occupancy is beside the point and must not gate it: the
+    # free window is typically the middle of the day, when the room is empty,
+    # and the load it is banking against arrives in the evening when the room
+    # is not. Precooling an occupied room is the case that needs no
+    # preparation, because the controller is already holding it.
     if inputs.precool_opportunity:
-        if base is Mode.UNOCCUPIED:
-            trace.rejected.append("precool: room is unoccupied")
-        elif not inputs.forecast_demand_ahead:
+        if not inputs.forecast_demand_ahead:
             trace.rejected.append("precool: window open but no demand forecast ahead")
         else:
-            trace.reasons.append(
-                "precool window declared and demand forecast ahead"
-            )
+            trace.reasons.append("precool window declared and demand forecast ahead")
             return Mode.PRECOOL, None
 
     if inputs.predicted_to_hold is True and inputs.coasting_permitted:
@@ -192,7 +191,8 @@ def select_actuator(
         return ActuatorStep.NONE
 
     if mode is Mode.UNOCCUPIED:
-        # Not a wider envelope. Off. Only a heading-home request brings it back.
+        # Not a wider envelope. Off. A heading-home request or a precool window
+        # brings it back on; nothing else does.
         trace.rejected.append("all actuators: room unoccupied, air conditioning off")
         return ActuatorStep.NONE
 

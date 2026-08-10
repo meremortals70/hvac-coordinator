@@ -35,15 +35,20 @@ CONF_PRESENCE_ENTITY: Final = "presence_entity_id"
 CONF_SLEEP_SCHEDULE_ENTITY: Final = "sleep_schedule_entity_id"
 CONF_ILLUMINANCE_ENTITY: Final = "illuminance_entity_id"
 CONF_DIRECT_SUN_ENTITY: Final = "direct_sun_entity_id"
+CONF_WINDOW_DIRECTION: Final = "window_direction"
 CONF_OUTDOOR_TEMPERATURE_ENTITY: Final = "outdoor_temperature_entity_id"
 CONF_HORIZON_HOURS: Final = "horizon_hours"
 CONF_OPENING_ENTITIES: Final = "opening_entity_ids"
 CONF_COVER_ENTITIES: Final = "cover_entity_ids"
-CONF_LOCKOUT: Final = "lockout"
 CONF_LOCKOUT_REASON: Final = "lockout_reason"
 #: Custom lockout reasons the user has typed. Stored once for the whole entry,
 #: so a reason invented for one room is offered for every room afterwards.
 CONF_LOCKOUT_REASONS: Final = "lockout_reasons"
+
+#: First option in the lockout dropdown. Selecting it means the room is not
+#: locked out, which is why lockout needs no separate toggle and no second
+#: screen: one field answers both questions.
+NOT_LOCKED_OUT: Final = "Not locked out"
 
 #: Offered in the lockout dropdown before the user has added any of their own.
 DEFAULT_LOCKOUT_REASONS: Final = (

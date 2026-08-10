@@ -81,6 +81,9 @@ class RoomConfig:
     #: Adaptive Cover Pro publishes one per cover ("Sun Infront"). Without it,
     #: the controller falls back to whether the sun is above the horizon.
     direct_sun_entity_id: str | None = None
+    #: Which way this room's windows face. With it, the controller works out
+    #: sun-on-glass from the sun's position and needs no sensor at all.
+    window_direction: str | None = None
     opening_entity_ids: tuple[str, ...] = ()
     cover_entity_ids: tuple[str, ...] = ()
     #: Set for rooms that must never actuate. Carries the reason string that

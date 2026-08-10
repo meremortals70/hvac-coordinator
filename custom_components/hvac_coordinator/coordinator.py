@@ -13,7 +13,13 @@ from __future__ import annotations
 from datetime import datetime, time
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
+from homeassistant.core import (
+    Event,
+    EventStateChangedData,
+    HomeAssistant,
+    State,
+    callback,
+)
 from homeassistant.exceptions import ConfigEntryError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import issue_registry as ir
@@ -46,6 +52,7 @@ from .const import (
     CONF_START,
     CONF_TARIFF_WINDOWS,
     CONF_TEMPERATURE_ENTITY,
+    CONF_WINDOW_DIRECTION,
     DOMAIN,
     EVALUATION_INTERVAL,
     ISSUE_NO_BANDS,
@@ -63,6 +70,7 @@ from .hci import ComfortBand, dry_bulb_for_index
 from .models import DecisionTrace, Mode, RoomConfig, RoomInputs
 from .modes import evaluate_room
 from .store import ModelStore
+from .sun import azimuth_for_direction, sun_on_window
 from .tariff import (
     CONSTRAINT_NO_GRID_IMPORT,
     CONSTRAINT_PRECOOL_OPPORTUNITY,
@@ -110,6 +118,9 @@ class HvacCoordinator(DataUpdateCoordinator[dict[str, DecisionTrace]]):
         self._previous: dict[str, tuple[datetime, float, float, int, bool]] = {}
         #: The published demand forecast. Never contains vendor concepts.
         self.forecast: DemandForecast | None = None
+        #: Entities currently logged as unavailable, so each transition is
+        #: recorded once rather than on every evaluation.
+        self._unavailable: set[str] = set()
         self.rooms: dict[str, RoomConfig] = _rooms_from_entry(config_entry)
         self.tariff: TariffSchedule | None = _tariff_from_entry(config_entry)
         #: Rooms that have a device in the registry, for stale removal. Seeded
@@ -465,23 +476,41 @@ class HvacCoordinator(DataUpdateCoordinator[dict[str, DecisionTrace]]):
     def _direct_sun(self, room: RoomConfig) -> bool | None:
         """Whether the sun is on this room's windows.
 
-        Prefers a per-room sensor, because it is geometry: sun position against
-        the window aspect. Adaptive Cover Pro publishes one per cover.
+        Worked out from geometry: the sun's position, which Home Assistant
+        already publishes as `sun.sun`, against the direction the room's
+        windows face. **No extra entity or integration is needed.**
 
         Indoor light level is deliberately not used. A semi-transparent blind
         reads bright when it is fully closed, so lux would report nothing to
         block at exactly the moment the blind is already blocking.
 
-        With no sensor configured, falls back to whether the sun is above the
-        horizon — true of the whole house, so it will be wrong for a room the
-        sun never reaches. Configure the sensor.
+        A per-room sensor can be configured to override this, for a room whose
+        exposure is more complicated than one compass direction — a corner
+        room, or one shaded by a tree.
+
+        None means the question cannot be answered, which the evaluator treats
+        as "do not move the covers" rather than as either answer.
         """
         if room.direct_sun_entity_id:
             return self._bool(room.direct_sun_entity_id)
+
         sun = self.hass.states.get("sun.sun")
         if sun is None:
             return None
-        return sun.state == "above_horizon"
+        return sun_on_window(
+            self._attribute(sun, "azimuth"),
+            self._attribute(sun, "elevation"),
+            azimuth_for_direction(room.window_direction),
+        )
+
+    @staticmethod
+    def _attribute(state: State, name: str) -> float | None:
+        """A numeric attribute, or None when it is missing or not a number."""
+        value = state.attributes.get(name)
+        try:
+            return float(value)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return None
 
     def _capabilities(self, room: RoomConfig) -> dict[str, bool]:
         """What the unit can do, so the decision never picks an absent mode.
@@ -634,6 +663,7 @@ def _room_from_raw(
         sleep_schedule_entity_id=raw.get(CONF_SLEEP_SCHEDULE_ENTITY),
         illuminance_entity_id=raw.get(CONF_ILLUMINANCE_ENTITY),
         direct_sun_entity_id=raw.get(CONF_DIRECT_SUN_ENTITY),
+        window_direction=raw.get(CONF_WINDOW_DIRECTION),
         opening_entity_ids=tuple(raw.get(CONF_OPENING_ENTITIES, []) or []),
         cover_entity_ids=tuple(raw.get(CONF_COVER_ENTITIES, []) or []),
         lockout_reason=raw.get(CONF_LOCKOUT_REASON),

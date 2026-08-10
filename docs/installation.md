@@ -11,20 +11,44 @@ Python packages.
 
 ## Install
 
-### Manual
+### With HACS (recommended)
 
-1. Download or clone this repository
+HACS does not know about this repository until you tell it. That is what a
+"custom repository" is — a repository HACS watches that is not on its default
+list.
+
+1. Open **HACS** in the Home Assistant sidebar
+2. Click the **three-dot menu** at the top right of the HACS page
+3. Choose **Custom repositories**
+4. In **Repository**, paste:
+   ```
+   https://github.com/meremortals70/hvac-coordinator
+   ```
+5. In **Type**, choose **Integration**
+6. Click **Add**, then close the dialog
+
+HACS now watches this repository. To install what it found:
+
+7. Back on the HACS page, search for **HVAC Coordinator**
+8. Click it, then **Download**
+9. Accept the version it offers
+10. **Restart Home Assistant** — Settings → System → top right → Restart
+
+Nothing appears until you restart. That catches people out every time.
+
+### Updating later
+
+HACS shows an update when a new **release** is published. If you know there is a
+newer version and HACS is not offering it, open the repository in HACS and use
+**Redownload** — that fetches the current state regardless.
+
+### Without HACS
+
+1. Download the repository as a ZIP and unpack it
 2. Copy the folder `custom_components/hvac_coordinator/` into your Home
    Assistant configuration directory, so you end up with
    `config/custom_components/hvac_coordinator/manifest.json`
 3. Restart Home Assistant
-
-### HACS
-
-1. HACS → three-dot menu → **Custom repositories**
-2. Add this repository's URL, category **Integration**
-3. Install **HVAC Coordinator**
-4. Restart Home Assistant
 
 ## Set up
 
@@ -59,7 +83,7 @@ Adding and editing are the same two steps. First the room and its entities:
 | Illuminance sensor | No | Recorded, not acted on |
 | Windows and doors | No | Any one open suspends the room |
 | Blinds | No | Without any, covers are never used |
-| Lock this room out | No | Ticking it adds a step asking why. The room then never actuates |
+| Lockout | No | Leave on "Not locked out". Choosing any reason means the room is never actuated |
 
 Then the comfort bands, in HCI. These arrive prefilled with sensible defaults —
 occupied 24–27, sleep 21–24 — and are meant to be adjusted. Clear both boxes of

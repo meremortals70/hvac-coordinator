@@ -28,20 +28,22 @@ Nothing. Creating the integration takes no settings. One instance only.
 | Humidity sensor | No | No comfort index, no actuation |
 | Presence sensor | No | Presence reads unknown; room holds occupied |
 | Sleep schedule | No | Sleep band is never used |
-| Sun on this room's windows | No | Falls back to sun above horizon, which is house-wide |
+| Which way the windows face | No | Blinds are never used, because the controller cannot tell when the sun is on the glass |
+| Sun-on-window sensor | No | Overrides the direction, for a room too complex for one compass point |
 | Illuminance sensor | No | Recorded only; not acted on |
 | Windows and doors | No | No opening interlock |
 | Blinds | No | Covers are never used |
-| Lock this room out | No | Room actuates normally |
+| Lockout | No | Room actuates normally |
 
 The room id is derived from the room name. Adding a room whose name produces an
 existing id replaces that room rather than duplicating it.
 
-**Lockout is a tick box, not a text field.** Tick it and a further step asks
-why, offering a dropdown of reasons plus anything you have typed before. A
-reason you type is stored for the whole installation and offered for every room
-from then on. Text alone was too easy to fill in by accident, and an accidental
-lockout is a room that silently never runs.
+**Lockout is a single dropdown.** The first option, "Not locked out", is the
+default; choosing any other option is what switches lockout on. One field, one
+screen, and no free text box that could be filled in by accident.
+
+The list offers six built-in reasons and accepts one you type. A reason you type
+is stored for the whole installation and offered for every room from then on.
 
 ### Comfort bands
 
