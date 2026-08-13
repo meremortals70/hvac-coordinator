@@ -21,6 +21,8 @@ from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFl
 from homeassistant.helpers import selector
 
 from .const import (
+    CONF_ANNOUNCE,
+    CONF_ANNOUNCE_TARGETS,
     CONF_BAND_HIGH,
     CONF_BAND_LOW,
     CONF_BANDS,
@@ -28,12 +30,17 @@ from .const import (
     CONF_COASTING_PERMITTED,
     CONF_CONSTRAINTS,
     CONF_COVER_ENTITIES,
+    CONF_DAILY_SUPPLY_CENTS,
     CONF_DIRECT_SUN_ENTITY,
     CONF_END,
+    CONF_EXPORT_CENTS,
+    CONF_EXPORT_WINDOWS,
     CONF_HUMIDITY_ENTITY,
     CONF_ILLUMINANCE_ENTITY,
+    CONF_IMPORT_CENTS,
     CONF_LOCKOUT_REASON,
     CONF_LOCKOUT_REASONS,
+    CONF_OCCUPIED_AFTER,
     CONF_OPENING_ENTITIES,
     CONF_OUTDOOR_TEMPERATURE_ENTITY,
     CONF_PRESENCE_ENTITY,
@@ -45,6 +52,8 @@ from .const import (
     CONF_START,
     CONF_TARIFF_WINDOWS,
     CONF_TEMPERATURE_ENTITY,
+    CONF_VACANT_AFTER,
+    CONF_WARNING_GRACE,
     CONF_WINDOW_DIRECTION,
     DOMAIN,
     NOT_LOCKED_OUT,
@@ -55,7 +64,10 @@ from .forms import (
     bands_as_suggestions,
     bands_from_input,
     default_band_suggestions,
+    default_grace_suggestions,
+    describe_export_window,
     describe_window,
+    export_window_from_input,
     extend_lockout_reasons,
     extend_rate_labels,
     known_lockout_reasons,
@@ -63,6 +75,7 @@ from .forms import (
     room_from_input,
     schedule_gaps,
     sort_windows,
+    window_as_suggestions,
     window_from_input,
 )
 from .sun import WINDOW_DIRECTIONS
@@ -104,6 +117,37 @@ ROOM_SCHEMA = vol.Schema(
 )
 
 
+def _cents_selector() -> selector.NumberSelector:
+    """A cents-per-unit box."""
+    return selector.NumberSelector(
+        selector.NumberSelectorConfig(
+            min=0, max=1000, step=0.01, unit_of_measurement="c",
+            mode=selector.NumberSelectorMode.BOX,
+        )
+    )
+
+
+def export_window_schema() -> vol.Schema:
+    """A feed-in rate, optionally limited to part of the day."""
+    return vol.Schema(
+        {
+            vol.Required(CONF_EXPORT_CENTS): _cents_selector(),
+            vol.Optional(CONF_START, default="00:00:00"): selector.TimeSelector(),
+            vol.Optional(CONF_END, default="00:00:00"): selector.TimeSelector(),
+        }
+    )
+
+
+def _minutes_selector() -> selector.NumberSelector:
+    """A minutes box for the grace timings."""
+    return selector.NumberSelector(
+        selector.NumberSelectorConfig(
+            min=0, max=120, step=1, unit_of_measurement="min",
+            mode=selector.NumberSelectorMode.BOX,
+        )
+    )
+
+
 def room_schema(lockout_reasons: list[str]) -> vol.Schema:
     """The room form, with the lockout dropdown built from known reasons.
 
@@ -114,6 +158,13 @@ def room_schema(lockout_reasons: list[str]) -> vol.Schema:
     """
     return ROOM_SCHEMA.extend(
         {
+            vol.Optional(CONF_OCCUPIED_AFTER): _minutes_selector(),
+            vol.Optional(CONF_VACANT_AFTER): _minutes_selector(),
+            vol.Optional(CONF_WARNING_GRACE): _minutes_selector(),
+            vol.Optional(CONF_ANNOUNCE, default=False): selector.BooleanSelector(),
+            vol.Optional(CONF_ANNOUNCE_TARGETS): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="media_player", multiple=True)
+            ),
             vol.Optional(CONF_WINDOW_DIRECTION): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=list(WINDOW_DIRECTIONS),
@@ -153,6 +204,7 @@ def window_schema(rate_labels: list[str]) -> vol.Schema:
         {
             vol.Required(CONF_START): selector.TimeSelector(),
             vol.Required(CONF_END): selector.TimeSelector(),
+            vol.Optional(CONF_IMPORT_CENTS): _cents_selector(),
             vol.Required(CONF_RATE): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=rate_labels,
@@ -194,8 +246,12 @@ class _RoomSteps:
         return []
 
     def _suggested_room(self) -> dict[str, Any]:
-        """Values to prefill the room form with. Empty when adding."""
-        return {}
+        """Values to prefill the room form with.
+
+        A new room arrives with the default grace timings already in it, so it
+        behaves sensibly without anyone reasoning about compressor cycling.
+        """
+        return dict(default_grace_suggestions())
 
     def _suggested_bands(self) -> dict[str, float]:
         """Values to prefill the bands form with.
@@ -288,6 +344,7 @@ class HvacCoordinatorOptionsFlow(_RoomSteps, OptionsFlow):
         """Initialize the flow."""
         self._room = {}
         self._editing: str | None = None
+        self._editing_window: str | None = None
 
     @property
     def _rooms(self) -> list[dict[str, Any]]:
@@ -311,7 +368,10 @@ class HvacCoordinatorOptionsFlow(_RoomSteps, OptionsFlow):
                 "edit_room",
                 "remove_room",
                 "add_window",
+                "edit_window",
                 "remove_window",
+                "export_rate",
+                "supply_charge",
                 "outdoor",
             ],
         )
@@ -431,6 +491,166 @@ class HvacCoordinatorOptionsFlow(_RoomSteps, OptionsFlow):
         options.setdefault(CONF_TARIFF_WINDOWS, self._windows)
         return self.async_create_entry(title="", data=options)
 
+    async def async_step_edit_window(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Change an existing tariff window."""
+        if not self._windows:
+            return self.async_abort(reason="no_windows")
+
+        if user_input is None:
+            return self.async_show_form(
+                step_id="edit_window",
+                data_schema=self._window_choice_schema(),
+                description_placeholders={"schedule": self._schedule_summary()},
+            )
+
+        if self._editing_window is None:
+            self._editing_window = user_input[CONF_START]
+            return await self.async_step_window_detail()
+        return await self.async_step_window_detail(user_input)
+
+    async def async_step_window_detail(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """The window itself, prefilled with what it currently is."""
+        existing = next(
+            (
+                window
+                for window in self._windows
+                if str(window[CONF_START]) == self._editing_window
+            ),
+            None,
+        )
+        if existing is None:
+            return self.async_abort(reason="no_windows")
+
+        schema = window_schema(known_rate_labels(self._stored_rate_labels()))
+        if user_input is None:
+            return self.async_show_form(
+                step_id="window_detail",
+                data_schema=self.add_suggested_values_to_schema(
+                    schema, window_as_suggestions(existing)
+                ),
+            )
+
+        replacement = window_from_input(user_input)
+        remaining = [
+            window
+            for window in self._windows
+            if str(window[CONF_START]) != self._editing_window
+        ]
+        options = dict(self.config_entry.options)
+        options[CONF_TARIFF_WINDOWS] = sort_windows([*remaining, replacement])
+        options[CONF_RATE_LABELS] = extend_rate_labels(
+            self._stored_rate_labels(), replacement[CONF_RATE]
+        )
+        options.setdefault(CONF_ROOMS, self._rooms)
+        return self.async_create_entry(title="", data=options)
+
+    async def async_step_export_rate(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Feed-in rate. One flat rate, or several if yours varies."""
+        if user_input is None:
+            existing = self._export_windows
+            suggested = (
+                {CONF_EXPORT_CENTS: existing[0][CONF_EXPORT_CENTS]}
+                if len(existing) == 1
+                else {}
+            )
+            schema = export_window_schema()
+            return self.async_show_form(
+                step_id="export_rate",
+                data_schema=self.add_suggested_values_to_schema(schema, suggested)
+                if suggested
+                else schema,
+                description_placeholders={"feed_in": self._export_summary()},
+            )
+
+        window = export_window_from_input(user_input)
+        existing = list(self._export_windows)
+        # A flat all-day rate replaces whatever was there; a partial-day rate
+        # is added alongside, which is how a flat rate becomes time-varying.
+        if window[CONF_START] == window[CONF_END]:
+            existing = [window]
+        else:
+            existing = [
+                w
+                for w in existing
+                if str(w[CONF_START]) != window[CONF_START]
+                and str(w[CONF_START]) != str(w[CONF_END])
+            ]
+            existing.append(window)
+
+        options = dict(self.config_entry.options)
+        options[CONF_EXPORT_WINDOWS] = existing
+        options.setdefault(CONF_ROOMS, self._rooms)
+        options.setdefault(CONF_TARIFF_WINDOWS, self._windows)
+        return self.async_create_entry(title="", data=options)
+
+    async def async_step_supply_charge(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """The daily supply charge. One figure for the whole house."""
+        if user_input is None:
+            current = self.config_entry.options.get(
+                CONF_DAILY_SUPPLY_CENTS,
+                self.config_entry.data.get(CONF_DAILY_SUPPLY_CENTS),
+            )
+            schema = vol.Schema(
+                {vol.Optional(CONF_DAILY_SUPPLY_CENTS): _cents_selector()}
+            )
+            return self.async_show_form(
+                step_id="supply_charge",
+                data_schema=self.add_suggested_values_to_schema(
+                    schema, {CONF_DAILY_SUPPLY_CENTS: current}
+                )
+                if current is not None
+                else schema,
+            )
+
+        options = dict(self.config_entry.options)
+        options[CONF_DAILY_SUPPLY_CENTS] = user_input.get(CONF_DAILY_SUPPLY_CENTS)
+        options.setdefault(CONF_ROOMS, self._rooms)
+        options.setdefault(CONF_TARIFF_WINDOWS, self._windows)
+        return self.async_create_entry(title="", data=options)
+
+    def _window_choice_schema(self) -> vol.Schema:
+        """A picker over the tariff windows."""
+        return vol.Schema(
+            {
+                vol.Required(CONF_START): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(
+                                value=str(window[CONF_START]),
+                                label=describe_window(window),
+                            )
+                            for window in sort_windows(self._windows)
+                        ],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                )
+            }
+        )
+
+    @property
+    def _export_windows(self) -> list[dict[str, Any]]:
+        return list(
+            self.config_entry.options.get(
+                CONF_EXPORT_WINDOWS,
+                self.config_entry.data.get(CONF_EXPORT_WINDOWS, []),
+            )
+        )
+
+    def _export_summary(self) -> str:
+        if not self._export_windows:
+            return "No feed-in rate configured."
+        return "\n".join(
+            describe_export_window(w) for w in self._export_windows
+        )
+
     async def async_step_remove_window(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -525,7 +745,8 @@ class HvacCoordinatorOptionsFlow(_RoomSteps, OptionsFlow):
         if not existing:
             return {}
         return {
-            **existing,
+            **default_grace_suggestions(),
+            **{k: v for k, v in existing.items() if v is not None},
             CONF_LOCKOUT_REASON: existing.get(CONF_LOCKOUT_REASON) or NOT_LOCKED_OUT,
         }
 

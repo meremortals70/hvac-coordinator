@@ -28,6 +28,49 @@ temperature**, because sweat evaporates less readily in humid air. Any index
 that falls as humidity rises will tell you a muggy room is comfortable, and the
 controller will sit there doing nothing on the night you most want it running.
 
+## What air temperature and humidity cannot see
+
+A person exchanges heat four ways: conduction and convection to the air,
+evaporation of sweat, and **radiant exchange with the surfaces around them**.
+Dry bulb and humidity describe the first two. They say nothing about the third.
+
+That gap is why a room can read 24 °C on a wall sensor while someone sitting in
+it is uncomfortably hot. Three corrections close it:
+
+| Correction | Adds | When |
+|---|---|---|
+| Sun on the glass | up to +3.0 HCI | Scaled by how far the covers are closed |
+| Still air | +1.0 HCI | No fan, and the air conditioner not running |
+| Heat load in the room | +1.0 HCI | A configured heat-source entity is on |
+
+**A closed blind is not the same as no sun.** A 50% blind passes roughly half
+the radiant load. Even a fully closed one passes about 15%, because it absorbs
+the energy and re-radiates it inward — which is why a room behind a shut blind
+on a hot afternoon is still warm.
+
+Worked example, at 24 °C and 60% humidity:
+
+| Conditions | HCI |
+|---|---|
+| Shaded, air moving | 25.9 — comfortable |
+| Sun on the glass, no blind | 28.9 — warm |
+| Sun, 50% blind | 27.6 — warm |
+| Sun, 50% blind, still air, workstation running | 29.6 — warm |
+
+The last row is an office on a sunny afternoon. The air-only index calls it
+comfortable and it is not.
+
+**The setpoint moves with it.** A sunlit room is asked for colder air to reach
+the same felt comfort — the inverse solve uses the same corrections, so the
+band means the same thing in every room.
+
+Every trace publishes `hci_air_only` and `radiant_fraction` alongside `hci`, so
+a surprising number can be read rather than argued with.
+
+**These coefficients are physically motivated, not measured.** They are the
+first thing to adjust if a room consistently feels wrong. Compare how a room
+feels against its `hci`, `hci_air_only` and `radiant_fraction`.
+
 ## Two things it is not
 
 **It is not a temperature.** It is reported in HCI, not °C. 25 HCI is not 25 °C.

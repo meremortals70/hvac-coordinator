@@ -16,14 +16,10 @@ Every call is checked against the entity's advertised capabilities first. An
 HVAC mode the unit does not support, or a fan mode it does not have, is a
 rejection recorded in the trace rather than a service call that errors.
 
-**Covers — routed by whichever integration owns them.** A cover managed by
-Adaptive Cover Pro is commanded through `adaptive_cover_pro.set_position`,
-which respects its priority pipeline, so weather safety, position floors and
-manual override still win. Layer 3 sets intent; it does not re-implement sun
-geometry. Any other cover gets the standard `cover.set_cover_position`.
-
-The owning integration is read from the entity registry rather than guessed
-from the entity id.
+**Covers — standard `cover.set_cover_position`.** This integration owns cover
+decisions; it does not delegate them. Sun geometry is worked out in `sun.py`
+from the window direction and the sun's position, so there is nothing to hand
+off to.
 """
 
 from __future__ import annotations
@@ -64,7 +60,6 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant, State
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import entity_registry as er
 
 from .const import LOGGER
 from .models import ActuatorStep, DecisionTrace, Mode, RoomConfig
@@ -72,17 +67,11 @@ from .models import ActuatorStep, DecisionTrace, Mode, RoomConfig
 if TYPE_CHECKING:
     from .coordinator import HvacCoordinator
 
-#: The Adaptive Cover Pro integration domain, as it appears in the entity
-#: registry for entities it owns.
-ADAPTIVE_COVER_PRO = "adaptive_cover_pro"
-ACP_SERVICE_SET_POSITION = "set_position"
-
 #: How far either side of the target a range-only unit is asked to straddle.
 #: Units taking a low/high pair need a band, not a point.
 RANGE_DEADBAND_C = 1.0
 
-#: Cover positions expressing intent. Adaptive Cover Pro clamps these against
-#: its own floors and ceilings, so they are a request, not a final position.
+#: Cover positions. Fully closed blocks solar gain; fully open admits it.
 COVER_BLOCK_GAIN = 0
 COVER_ADMIT_GAIN = 100
 
@@ -339,36 +328,21 @@ class Actuator:
         )
 
     async def _async_move_covers(self, room: RoomConfig, trace: DecisionTrace) -> None:
-        """Set cover intent, through whichever integration owns each cover."""
+        """Move the room's covers to block or admit solar gain."""
         position = COVER_BLOCK_GAIN if trace.demand == "cool" else COVER_ADMIT_GAIN
         if self._last_cover.get(room.room_id) == position:
             return
 
-        registry = er.async_get(self.hass)
-        managed: list[str] = []
-        plain: list[str] = []
-        for entity_id in room.cover_entity_ids:
-            entry = registry.async_get(entity_id)
-            if entry is not None and entry.platform == ADAPTIVE_COVER_PRO:
-                managed.append(entity_id)
-            else:
-                plain.append(entity_id)
-
         try:
-            if managed:
-                await self.hass.services.async_call(
-                    ADAPTIVE_COVER_PRO,
-                    ACP_SERVICE_SET_POSITION,
-                    {ATTR_ENTITY_ID: managed, ATTR_POSITION: position},
-                    blocking=True,
-                )
-            if plain:
-                await self.hass.services.async_call(
-                    COVER_DOMAIN,
-                    SERVICE_SET_COVER_POSITION,
-                    {ATTR_ENTITY_ID: plain, ATTR_POSITION: position},
-                    blocking=True,
-                )
+            await self.hass.services.async_call(
+                COVER_DOMAIN,
+                SERVICE_SET_COVER_POSITION,
+                {
+                    ATTR_ENTITY_ID: list(room.cover_entity_ids),
+                    ATTR_POSITION: position,
+                },
+                blocking=True,
+            )
         except HomeAssistantError as err:
             trace.rejected.append(f"covers: {err}")
             LOGGER.warning("Moving covers for %s failed: %s", room.room_id, err)

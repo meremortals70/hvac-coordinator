@@ -21,6 +21,30 @@
       },
       "demand_forecast": {
         "default": "mdi:transmission-tower-export"
+      },
+      "tariff_rate": {
+        "default": "mdi:cash-clock"
+      },
+      "import_price": {
+        "default": "mdi:transmission-tower-import"
+      },
+      "export_price": {
+        "default": "mdi:transmission-tower-export"
+      },
+      "daily_supply_charge": {
+        "default": "mdi:calendar-clock"
+      },
+      "active_constraints": {
+        "default": "mdi:gate"
+      },
+      "projected_cost": {
+        "default": "mdi:cash"
+      },
+      "outdoor_temperature": {
+        "default": "mdi:home-thermometer-outline"
+      },
+      "rooms_configured": {
+        "default": "mdi:home-group"
       }
     }
   },

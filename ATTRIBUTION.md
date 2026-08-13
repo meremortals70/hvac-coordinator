@@ -39,8 +39,10 @@ extended Kalman filter, solar gain from sun position, a convergence criterion,
 and hysteresis fallback until converged. The latent term is this project's
 addition; models built for heating climates do not need one.
 
-**Adaptive Cover Pro** — cover geometry, dual-axis sequencing and glare zones.
-This project sets intent and delegates rather than re-implementing sun tracking.
+**Adaptive Cover Pro** — read for how cover automations reason about sun
+geometry. This project **replaces** it rather than depending on it: cover
+decisions, sun-on-glass and the commands themselves are all its own. No code
+was taken.
 
 ## Science
 

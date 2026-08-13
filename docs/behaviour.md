@@ -47,9 +47,45 @@ is checked against the same band that would apply otherwise. If the prediction
 turns out to be wrong — the model is learned, not perfect — the next evaluation
 sees the room out of band and the compressor resumes, regardless of price.
 
+## Someone leaves the room briefly
+
+This is the case a raw presence sensor gets wrong, and it is handled with two
+waiting periods you can change per room.
+
+**Leaving to answer the front door, or make a coffee.** The room stays running.
+The vacancy clock starts the moment they leave, and only after it expires
+(default 10 minutes) is the room treated as empty. Anyone returning before then
+cancels it entirely — the clock does not accumulate across separate absences.
+
+**Arriving to drop something off and leaving again.** The room does not start.
+Presence has to hold (default 2 minutes) before the room is treated as occupied.
+Without that, putting a laptop on a desk starts a compressor for nothing.
+
+Those defaults are seeded into every new room, so this works without anyone
+having to reason about compressor cycling.
+
+### Announcements
+
+Off by default — a house that suddenly starts talking is a surprise. Turn it on
+per room and pick which media players to speak through, and before a room is
+shut down after a long absence you get two announcements: one when the vacancy
+period expires, and a second after the warning period (default 3 minutes)
+immediately before it shuts off.
+
+Returning at any point during that cancels the shutdown and the warning. A
+later absence warns again rather than shutting off silently.
+
+### Why this is in the integration rather than an automation
+
+Because the compressor decision and the occupancy decision are the same
+decision. An external automation calling `climate.turn_off` fights the
+controller: the controller re-evaluates 30 seconds later and turns it back on,
+because as far as it knows the room is occupied and out of band.
+
 ## A room becomes unoccupied
 
-The air conditioning goes **off**. Not a wider band, not reduced effort.
+Once the vacancy period has elapsed, the air conditioning goes **off**. Not a
+wider band, not reduced effort.
 
 Two things bring it back:
 
@@ -88,7 +124,10 @@ recovers — not every 30 seconds.
 
 ## Blinds
 
-Blinds are only moved when the sun is actually on that room's glass, worked out
+Blinds are moved by this integration directly. It does not use, depend on, or
+defer to any other cover integration.
+
+They are only moved when the sun is actually on that room's glass, worked out
 from the sun's position and the direction the windows face.
 
 They are also only moved when they have somewhere useful to go. A blind already

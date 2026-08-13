@@ -28,6 +28,8 @@ Attributes:
 | `reasons` | Why it is doing this |
 | `rejected` | What was considered and ruled out, with why |
 | `model` | The room's learned coefficients, their variance, sample count and whether each has converged |
+| `hci_air_only` | The index before the radiant, still-air and heat-load corrections |
+| `radiant_fraction` | How much solar load is reaching the room, 0 to 1 |
 
 **`reasons` and `rejected` are the point of this integration.** Between them
 they explain every decision, including which cheaper actuators were skipped and
@@ -62,6 +64,24 @@ hours, in kWh, with a per-window and per-room breakdown in its attributes.
 
 This is the published contract with whatever owns the battery. **It carries no
 vendor concepts.** See [Demand forecast](demand-forecast.md).
+
+## The coordinator device
+
+Everything house-wide appears as a sensor on a single **HVAC Coordinator**
+device, so a setting you entered once is visible without reopening the form
+that set it.
+
+| Sensor | Shows |
+|---|---|
+| Demand forecast | Projected kWh over the horizon, with per-window and per-room breakdown |
+| Tariff rate | The rate label in force now; the whole schedule in its attributes |
+| Import price | Cents per kWh in force now |
+| Feed-in price | Cents per kWh you are paid now; all export windows in its attributes |
+| Daily supply charge | The fixed daily charge |
+| Active constraints | Which constraints apply in the current window |
+| Projected cost | The forecast energy priced per window, in dollars |
+| Outdoor temperature | The configured outdoor feed |
+| Rooms configured | How many, and which |
 
 ## Repair issues
 

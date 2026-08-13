@@ -17,9 +17,8 @@ mode, temperature and fan mode, and moves covers.
 
 **It has never done this against a real unit.** Every service call was written
 against the service definitions read from source — Home Assistant's own climate
-and cover components, Versatile Thermostat's `services.yaml`, and Adaptive
-Cover Pro's — but reading a schema is not the same as watching a compressor
-start.
+and cover components — but reading a schema is not the same as watching a
+compressor start.
 
 Two things reduce the blast radius, and neither removes it:
 
@@ -77,6 +76,12 @@ sensor instead — it overrides the calculation entirely.
 
 A room with no direction and no sensor never uses its blinds, because the
 controller will not move them on a guess.
+
+## Announcements are text-to-speech only
+
+The announcement before shutting a room down calls `tts.speak` at the media
+players you choose. There is no notification option, no choice of voice, and no
+way to change the wording without editing the source.
 
 ## The comfort index is one opinion
 

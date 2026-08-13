@@ -5,7 +5,7 @@ doing, room by room, and tells you exactly why.
 
 **It never writes to your battery.**
 
-> ### Status: v0.4.0 — not yet proven
+> ### Status: v0.5.1 — not yet proven
 > Everything described here is built and unit tested. None of it has run for
 > long against real hardware. Treat your first week as a test and read
 > [Known limitations](docs/known-limitations.md) before you rely on it.
@@ -21,9 +21,9 @@ sitting there costing nothing.
 This does two things differently.
 
 **You say how a room should feel, not what temperature it should be.** You set
-a comfort band once. The controller works out what to actually ask the air
-conditioner for, adjusting for humidity — so the same band produces a cooler
-setpoint on a muggy night than a dry one, automatically.
+a comfort band once. The controller works out what to actually ask for,
+adjusting for humidity, sun through the glass, still air and equipment heat —
+all the things that make a room hot without moving the number on a wall sensor.
 
 **It spends the cheap things first.** Before the compressor runs it will close a
 blind against the sun, or run the fan, or use dry mode if the problem is
@@ -71,8 +71,9 @@ automations to read.
 band. The tariff decides *when* to bank energy and *which* actuator to use —
 never whether you get to be comfortable.
 
-**An unoccupied room is off.** Not held at a wider band. Off. A heading-home
-request brings it back, and so does a precool window when a load is coming.
+**An unoccupied room is off** — but not the instant someone steps out. Leaving
+to sign for a delivery does not stop the compressor; the room waits, and only a
+sustained absence shuts it down. Coming back cancels it.
 
 **Cheapest actuator first.** Blinds, then fan, then dry, then compressor.
 

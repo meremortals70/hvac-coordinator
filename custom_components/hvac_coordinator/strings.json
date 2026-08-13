@@ -3,7 +3,7 @@
     "step": {
       "room": {
         "title": "Add your first room",
-        "description": "Only the room name and the air conditioner are required. Leave anything you do not have empty.\n\n**Which way the windows face** lets the controller work out when the sun is actually on the glass, which is what decides whether closing a blind would achieve anything. Light level cannot answer that \u2014 a semi-transparent blind reads bright when it is fully closed. It needs no extra sensor: it uses the sun position Home Assistant already knows.\n\n**Lockout** means this room is never actuated. Leave it on \"Not locked out\" unless you mean it. The reason you choose is shown in the room's decision trace, and a reason you type is offered for every room afterwards.",
+        "description": "Only the room name and the air conditioner are required. Leave anything you do not have empty.\n\n**Which way the windows face** lets the controller work out when the sun is actually on the glass, which is what decides whether closing a blind would achieve anything. Light level cannot answer that \u2014 a semi-transparent blind reads bright when fully closed. It needs no extra sensor; it uses the sun position Home Assistant already knows.\n\n**The two waiting times matter more than they look.** The first stops someone dropping a laptop off from starting the compressor. The second stops someone answering the front door from shutting it off \u2014 the room keeps running while they are briefly away, because stopping and starting costs more than the few minutes of running. The defaults are already filled in.\n\n**Lockout** means this room is never actuated. Leave it on \"Not locked out\" unless you mean it.",
         "data": {
           "name": "Room name",
           "climate_entity_id": "Air conditioner",
@@ -16,7 +16,14 @@
           "direct_sun_entity_id": "Sun-on-window sensor (optional, overrides the above)",
           "opening_entity_ids": "Windows and doors (optional)",
           "cover_entity_ids": "Blinds (optional)",
-          "lockout_reason": "Lockout"
+          "lockout_reason": "Lockout",
+          "occupied_after_minutes": "Wait this long before starting (minutes)",
+          "vacant_after_minutes": "Wait this long after they leave before stopping (minutes)",
+          "warning_grace_minutes": "Warn this long before shutting down (minutes)",
+          "announce_before_shutdown": "Announce before shutting the room down",
+          "announce_target_entity_ids": "Announce through (optional)",
+          "heat_load_entity_id": "Heat source in the room (optional)",
+          "air_movement_entity_id": "Fan or air movement (optional)"
         }
       },
       "bands": {
@@ -43,7 +50,7 @@
     "step": {
       "room": {
         "title": "Room",
-        "description": "Only the room name and the air conditioner are required. Leave anything you do not have empty.\n\n**Which way the windows face** lets the controller work out when the sun is actually on the glass, which is what decides whether closing a blind would achieve anything. Light level cannot answer that \u2014 a semi-transparent blind reads bright when it is fully closed. It needs no extra sensor: it uses the sun position Home Assistant already knows.\n\n**Lockout** means this room is never actuated. Leave it on \"Not locked out\" unless you mean it. The reason you choose is shown in the room's decision trace, and a reason you type is offered for every room afterwards.",
+        "description": "Only the room name and the air conditioner are required. Leave anything you do not have empty.\n\n**Which way the windows face** lets the controller work out when the sun is actually on the glass, which is what decides whether closing a blind would achieve anything. Light level cannot answer that \u2014 a semi-transparent blind reads bright when fully closed. It needs no extra sensor; it uses the sun position Home Assistant already knows.\n\n**The two waiting times matter more than they look.** The first stops someone dropping a laptop off from starting the compressor. The second stops someone answering the front door from shutting it off \u2014 the room keeps running while they are briefly away, because stopping and starting costs more than the few minutes of running. The defaults are already filled in.\n\n**Lockout** means this room is never actuated. Leave it on \"Not locked out\" unless you mean it.",
         "data": {
           "name": "Room name",
           "climate_entity_id": "Air conditioner",
@@ -56,7 +63,14 @@
           "direct_sun_entity_id": "Sun-on-window sensor (optional, overrides the above)",
           "opening_entity_ids": "Windows and doors (optional)",
           "cover_entity_ids": "Blinds (optional)",
-          "lockout_reason": "Lockout"
+          "lockout_reason": "Lockout",
+          "occupied_after_minutes": "Wait this long before starting (minutes)",
+          "vacant_after_minutes": "Wait this long after they leave before stopping (minutes)",
+          "warning_grace_minutes": "Warn this long before shutting down (minutes)",
+          "announce_before_shutdown": "Announce before shutting the room down",
+          "announce_target_entity_ids": "Announce through (optional)",
+          "heat_load_entity_id": "Heat source in the room (optional)",
+          "air_movement_entity_id": "Fan or air movement (optional)"
         }
       },
       "bands": {
@@ -79,7 +93,10 @@
           "remove_room": "Remove a room",
           "add_window": "Add a tariff window",
           "remove_window": "Remove a tariff window",
-          "outdoor": "Outdoor temperature feed"
+          "outdoor": "Outdoor temperature feed",
+          "edit_window": "Edit a tariff window",
+          "export_rate": "Feed-in rate",
+          "supply_charge": "Daily supply charge"
         }
       },
       "edit_room": {
@@ -104,7 +121,8 @@
           "end": "Ends at",
           "rate": "Rate label",
           "constraints": "Constraints (optional)",
-          "coasting_permitted": "Coasting permitted in this window"
+          "coasting_permitted": "Coasting permitted in this window",
+          "import_cents_per_kwh": "Import price (cents per kWh, optional)"
         }
       },
       "remove_window": {
@@ -119,6 +137,41 @@
         "description": "The outdoor temperature the thermal model learns against. Without it the model cannot learn heat loss, so rooms never coast and the demand forecast falls back to an assumed duty cycle.\n\nOne feed serves the whole house.",
         "data": {
           "outdoor_temperature_entity_id": "Outdoor temperature sensor (optional)"
+        }
+      },
+      "edit_window": {
+        "title": "Edit a tariff window",
+        "description": "Pick the window to change.\n\nCurrent schedule:\n{schedule}",
+        "data": {
+          "start": "Window"
+        }
+      },
+      "window_detail": {
+        "title": "Tariff window",
+        "description": "The window's current settings are filled in. Change what you need.",
+        "data": {
+          "start": "Starts at",
+          "end": "Ends at",
+          "rate": "Rate label",
+          "constraints": "Constraints (optional)",
+          "coasting_permitted": "Coasting permitted in this window",
+          "import_cents_per_kwh": "Import price (cents per kWh, optional)"
+        }
+      },
+      "export_rate": {
+        "title": "Feed-in rate",
+        "description": "What you are paid for exported energy, in cents per kWh.\n\nLeave the times at 00:00 to 00:00 for a single flat rate all day, which is what most plans have. To describe a rate that varies, add one entry per period: a partial-day entry replaces any flat rate.\n\nCurrent feed-in:\n{feed_in}",
+        "data": {
+          "export_cents_per_kwh": "Feed-in rate (cents per kWh)",
+          "start": "From (leave at 00:00 for all day)",
+          "end": "To (leave at 00:00 for all day)"
+        }
+      },
+      "supply_charge": {
+        "title": "Daily supply charge",
+        "description": "The fixed daily charge for the connection, in cents per day. One figure for the whole house.",
+        "data": {
+          "daily_supply_cents": "Daily supply charge (cents per day)"
         }
       }
     },
@@ -152,6 +205,30 @@
       },
       "demand_forecast": {
         "name": "Demand forecast"
+      },
+      "tariff_rate": {
+        "name": "Tariff rate"
+      },
+      "import_price": {
+        "name": "Import price"
+      },
+      "export_price": {
+        "name": "Feed-in price"
+      },
+      "daily_supply_charge": {
+        "name": "Daily supply charge"
+      },
+      "active_constraints": {
+        "name": "Active constraints"
+      },
+      "projected_cost": {
+        "name": "Projected cost"
+      },
+      "outdoor_temperature": {
+        "name": "Outdoor temperature"
+      },
+      "rooms_configured": {
+        "name": "Rooms configured"
       }
     }
   },

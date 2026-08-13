@@ -42,6 +42,10 @@ class TariffWindow:
     start: time
     end: time
     rate: str
+    #: Import price in cents per kWh. Optional: a plan can be described by
+    #: window and constraint alone, and the controller's decisions do not
+    #: depend on price. It is carried so the demand forecast can be costed.
+    import_cents: float | None = None
     constraints: frozenset[str] = field(default_factory=frozenset)
     #: False where coasting is the wrong call regardless of what the thermal
     #: model says, e.g. the cheap overnight window.
@@ -62,14 +66,46 @@ class TariffWindow:
         return at >= self.start or at < self.end
 
     def unrecognised_constraints(self) -> frozenset[str]:
+        """Constraints on this window this controller does not act on itself.
+
+        They are reported rather than dropped, so a constraint meant for
+        another system is visible instead of silently ignored.
+        """
         return frozenset(self.constraints) - KNOWN_CONSTRAINTS
+
+
+@dataclass(frozen=True, slots=True)
+class ExportWindow:
+    """A feed-in rate over part of the day.
+
+    Most plans have one flat feed-in rate, which is a single window covering
+    the whole day. Time-varying export is expressed as several.
+    """
+
+    start: time
+    end: time
+    export_cents: float
+
+    def contains(self, at: time) -> bool:
+        if self.start == self.end:
+            return True
+        if self.start < self.end:
+            return self.start <= at < self.end
+        return at >= self.start or at < self.end
 
 
 class TariffSchedule:
     """A day of windows. Validated on construction, so gaps surface at setup."""
 
-    def __init__(self, windows: tuple[TariffWindow, ...]) -> None:
+    def __init__(
+        self,
+        windows: tuple[TariffWindow, ...],
+        export_windows: tuple[ExportWindow, ...] = (),
+        daily_supply_cents: float | None = None,
+    ) -> None:
         self._windows = windows
+        self._export_windows = export_windows
+        self.daily_supply_cents = daily_supply_cents
         self._validate()
 
     def _validate(self) -> None:
@@ -96,6 +132,24 @@ class TariffSchedule:
             if window.contains(at):
                 return window
         raise ValueError(f"No tariff window covers {at}")
+
+    @property
+    def export_windows(self) -> tuple[ExportWindow, ...]:
+        return self._export_windows
+
+    def export_cents_at(self, at: time) -> float | None:
+        """Feed-in rate in force, or None if no export rate is configured."""
+        for window in self._export_windows:
+            if window.contains(at):
+                return window.export_cents
+        return None
+
+    def import_cents_at(self, at: time) -> float | None:
+        """Import price in force, or None if the window carries no price."""
+        try:
+            return self.window_at(at).import_cents
+        except ValueError:
+            return None
 
     def unrecognised_constraints(self) -> frozenset[str]:
         """Every declared constraint this controller does not act on itself."""

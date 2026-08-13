@@ -11,6 +11,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Final
 
+from .grace import GraceSettings
 from .hci import ComfortBand
 
 
@@ -77,15 +78,30 @@ class RoomConfig:
     #: is in its sleeping hours. Without one, SLEEP is never entered.
     sleep_schedule_entity_id: str | None = None
     illuminance_entity_id: str | None = None
-    #: A binary sensor that is on while the sun is on this room's windows.
-    #: Adaptive Cover Pro publishes one per cover ("Sun Infront"). Without it,
-    #: the controller falls back to whether the sun is above the horizon.
+    #: A binary sensor that is on while something in the room is generating
+    #: heat — a workstation, a server, a dryer. Radiant and convective heat a
+    #: wall sensor barely sees but a person sitting next to it certainly does.
+    heat_load_entity_id: str | None = None
+    #: A fan, or anything else indicating the room's air is moving. Without
+    #: movement both convective and evaporative loss are worse than the
+    #: comfort formula assumes, so still air is a penalty.
+    air_movement_entity_id: str | None = None
+    #: Optional override: a binary sensor that is on while the sun is on this
+    #: room's windows. Only needed for a room too complicated for a single
+    #: compass direction. Normally the controller works it out itself.
     direct_sun_entity_id: str | None = None
     #: Which way this room's windows face. With it, the controller works out
     #: sun-on-glass from the sun's position and needs no sensor at all.
     window_direction: str | None = None
     opening_entity_ids: tuple[str, ...] = ()
     cover_entity_ids: tuple[str, ...] = ()
+    #: How long presence must hold before starting, how long vacancy must
+    #: hold before stopping, and whether to announce first. Seeded with
+    #: defaults so a room works without touching them.
+    grace: GraceSettings = field(default_factory=GraceSettings)
+    #: Media players to announce through. Empty means no announcement, however
+    #: the grace settings are configured.
+    announce_target_entity_ids: tuple[str, ...] = ()
     #: Set for rooms that must never actuate. Carries the reason string that
     #: appears in the trace, e.g. "upstairs renovation".
     lockout_reason: str | None = None
@@ -137,6 +153,10 @@ class RoomInputs:
     #: Whether the sun is currently on this room's windows. Geometry, not light
     #: level — sun position against the window aspect. None when unknown.
     direct_sun: bool | None = None
+    #: Something in the room is generating heat.
+    heat_load: bool = False
+    #: The room's air is moving. False means still, which is a comfort penalty.
+    air_moving: bool = False
     #: Whether this room has any covers under the controller's direction.
     has_covers: bool = False
     #: What the unit itself can do, read from the climate entity. The decision
@@ -167,6 +187,10 @@ class DecisionTrace:
     #: The occupancy mode COAST displaced, so the band in force is visible.
     base_mode: Mode | None = None
     hci: float | None = None
+    #: What the corrections contributed, so a surprising index can be read
+    #: rather than argued with.
+    hci_base: float | None = None
+    radiant_fraction: float | None = None
     band_low: float | None = None
     band_high: float | None = None
     band_position: str | None = None
@@ -192,6 +216,14 @@ class DecisionTrace:
             "mode": str(self.mode),
             "base_mode": str(self.base_mode) if self.base_mode else None,
             "hci": None if self.hci is None else round(self.hci, 2),
+            "hci_air_only": (
+                None if self.hci_base is None else round(self.hci_base, 2)
+            ),
+            "radiant_fraction": (
+                None
+                if self.radiant_fraction is None
+                else round(self.radiant_fraction, 2)
+            ),
             "band_low": self.band_low,
             "band_high": self.band_high,
             "band_position": self.band_position,

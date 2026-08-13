@@ -29,6 +29,7 @@ from .hci import (
     ComfortBand,
     comfort_index,
     dry_bulb_for_index,
+    radiant_load,
 )
 from .models import (
     BAND_MODES,
@@ -301,10 +302,44 @@ def evaluate_room(
     trace.mode = mode
     trace.base_mode = base
 
+    # Sun through glass, still air and equipment heat all change how hot a
+    # person is without moving the air temperature much. A wall sensor cannot
+    # see any of them, which is why the index carries them explicitly.
+    radiant = radiant_load(
+        direct_sun=inputs.direct_sun,
+        cover_position=inputs.cover_position,
+        has_covers=inputs.has_covers,
+    )
+    trace.radiant_fraction = radiant
+    still_air = not inputs.air_moving
+
     hci: float | None = None
     if inputs.temperature_c is not None and inputs.relative_humidity is not None:
-        hci = comfort_index(inputs.temperature_c, inputs.relative_humidity)
+        trace.hci_base = comfort_index(
+            inputs.temperature_c, inputs.relative_humidity
+        )
+        hci = comfort_index(
+            inputs.temperature_c,
+            inputs.relative_humidity,
+            radiant=radiant,
+            still_air=still_air,
+            heat_load=inputs.heat_load,
+        )
         trace.hci = hci
+        if hci - trace.hci_base >= 0.5:
+            trace.reasons.append(
+                f"index raised {hci - trace.hci_base:.1f} by "
+                + ", ".join(
+                    filter(
+                        None,
+                        (
+                            f"sun ({radiant:.0%} through)" if radiant > 0 else "",
+                            "still air" if still_air else "",
+                            "heat load in the room" if inputs.heat_load else "",
+                        ),
+                    )
+                )
+            )
     else:
         trace.rejected.append("comfort index: temperature or humidity unavailable")
 
@@ -320,7 +355,15 @@ def evaluate_room(
     # night produces a different setpoint for the same felt comfort.
     if band is not None and inputs.relative_humidity is not None:
         target_hci = band.low if mode is Mode.PRECOOL else band.midpoint
-        target_c = dry_bulb_for_index(target_hci, inputs.relative_humidity)
+        # The setpoint must be solved under the same conditions the index was
+        # measured under: a sunlit room needs colder air to feel the same.
+        target_c = dry_bulb_for_index(
+            target_hci,
+            inputs.relative_humidity,
+            radiant=radiant,
+            still_air=still_air,
+            heat_load=inputs.heat_load,
+        )
         if target_c in (SOLVE_MIN_C, SOLVE_MAX_C):
             # The band and the measured humidity together imply a setpoint
             # outside anything worth asking of the hardware. Clamped, and said

@@ -9,7 +9,7 @@ no dependencies at all:
 python3 -m unittest discover -s tests -p "test_core.py" -v
 ```
 
-128 tests covering the comfort index and its inverse, mode precedence, the full
+162 tests covering the comfort index and its inverse, mode precedence, the full
 actuator ordering, tariff windows and constraint handling, and setpoint
 clamping, the setup form helpers, the seeded band defaults and lockout reason
 handling.
@@ -45,6 +45,7 @@ import resolves to `Any`.
 | `thermal.py` | No — the learned model |
 | `forecast.py` | No — the demand forecast |
 | `sun.py` | No — is the sun on this room's windows |
+| `grace.py` | No — occupancy grace and announcements |
 | `forms.py` | No — shaping setup forms into stored configuration |
 | `store.py` | Yes — learned state persistence |
 | `actuator.py` | Yes — turns decisions into service calls |

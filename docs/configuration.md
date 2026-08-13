@@ -31,8 +31,15 @@ Nothing. Creating the integration takes no settings. One instance only.
 | Which way the windows face | No | Blinds are never used, because the controller cannot tell when the sun is on the glass |
 | Sun-on-window sensor | No | Overrides the direction, for a room too complex for one compass point |
 | Illuminance sensor | No | Recorded only; not acted on |
+| Heat source in the room | No | Equipment heat is not counted toward comfort |
+| Fan or air movement | No | Falls back to whether the air conditioner is running |
 | Windows and doors | No | No opening interlock |
 | Blinds | No | Covers are never used |
+| Wait before starting | Seeded | 2 minutes. Filters out grab-and-go visits |
+| Wait before stopping | Seeded | 10 minutes. The answering-the-door allowance |
+| Warn before shutting down | Seeded | 3 minutes between the two announcements |
+| Announce before shutting down | No | Off. A house should not start talking uninvited |
+| Announce through | No | Media players. Without any, nothing is announced |
 | Lockout | No | Room actuates normally |
 
 The room id is derived from the room name. Adding a room whose name produces an
@@ -99,6 +106,7 @@ Configuring no tariff is valid. The controller runs on comfort alone.
 | Evaluation interval | Internal |
 | Hysteresis | Learned, with a fixed fallback |
 | Which actuator to use | That is the decision you installed this to make |
+| Occupancy grace defaults | Seeded per room and editable, because the right value depends on the room |
 
 If one of these turns out to be something a user genuinely cannot work without,
 that is a bug in the derivation, and the fix is better derivation rather than

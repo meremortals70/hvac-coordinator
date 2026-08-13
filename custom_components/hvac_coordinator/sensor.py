@@ -22,6 +22,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from . import HvacConfigEntry
 from .const import DOMAIN
@@ -105,7 +106,15 @@ async def async_setup_entry(
 
     _add_new_rooms()
     entry.async_on_unload(coordinator.async_add_listener(_add_new_rooms))
-    async_add_entities([DemandForecastSensor(coordinator, entry)])
+    async_add_entities(
+        [
+            DemandForecastSensor(coordinator, entry),
+            *[
+                HubSensor(coordinator, entry, description)
+                for description in HUB_SENSORS
+            ],
+        ]
+    )
 
 
 class HvacRoomSensor(HvacRoomEntity, SensorEntity):
@@ -149,6 +158,206 @@ class HvacRoomSensor(HvacRoomEntity, SensorEntity):
         return self.entity_description.attributes_fn(trace)
 
 
+@dataclass(frozen=True, kw_only=True)
+class HubSensorDescription(SensorEntityDescription):
+    """Describes a house-wide sensor on the coordinator device."""
+
+    value_fn: Callable[[HvacCoordinator], str | float | None]
+    attributes_fn: Callable[[HvacCoordinator], dict[str, Any]] | None = None
+
+
+def _tariff_rate(coordinator: HvacCoordinator) -> str | None:
+    """The rate label in force right now."""
+    if coordinator.tariff is None:
+        return None
+    try:
+        return coordinator.tariff.window_at(dt_util.now().time()).rate
+    except ValueError:
+        return None
+
+
+def _import_price(coordinator: HvacCoordinator) -> float | None:
+    if coordinator.tariff is None:
+        return None
+    return coordinator.tariff.import_cents_at(dt_util.now().time())
+
+
+def _export_price(coordinator: HvacCoordinator) -> float | None:
+    if coordinator.tariff is None:
+        return None
+    return coordinator.tariff.export_cents_at(dt_util.now().time())
+
+
+def _supply_charge(coordinator: HvacCoordinator) -> float | None:
+    return None if coordinator.tariff is None else coordinator.tariff.daily_supply_cents
+
+
+def _constraints(coordinator: HvacCoordinator) -> str | None:
+    """Which constraints are in force, as a readable string."""
+    if coordinator.tariff is None:
+        return None
+    try:
+        window = coordinator.tariff.window_at(dt_util.now().time())
+    except ValueError:
+        return None
+    return ", ".join(sorted(window.constraints)) if window.constraints else "none"
+
+
+def _projected_cost(coordinator: HvacCoordinator) -> float | None:
+    """What the forecast energy would cost at the configured prices.
+
+    Per-window, because the whole point of a time-of-use plan is that the same
+    kWh costs different amounts depending on when it is used.
+    """
+    forecast = coordinator.forecast
+    if forecast is None or coordinator.tariff is None:
+        return None
+    total = 0.0
+    priced = False
+    for window in forecast.windows:
+        price = coordinator.tariff.import_cents_at(window.start)
+        if price is None:
+            continue
+        priced = True
+        total += window.kwh * price
+    return round(total / 100.0, 2) if priced else None
+
+
+HUB_SENSORS: tuple[HubSensorDescription, ...] = (
+    HubSensorDescription(
+        key="tariff_rate",
+        translation_key="tariff_rate",
+        value_fn=_tariff_rate,
+        attributes_fn=lambda c: {
+            "windows": [
+                {
+                    "start": w.start.isoformat(),
+                    "end": w.end.isoformat(),
+                    "rate": w.rate,
+                    "import_cents_per_kwh": w.import_cents,
+                    "constraints": sorted(w.constraints),
+                    "coasting_permitted": w.coasting_permitted,
+                }
+                for w in c.tariff.windows
+            ]
+            if c.tariff
+            else [],
+        },
+    ),
+    HubSensorDescription(
+        key="import_price",
+        translation_key="import_price",
+        native_unit_of_measurement="c/kWh",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=_import_price,
+    ),
+    HubSensorDescription(
+        key="export_price",
+        translation_key="export_price",
+        native_unit_of_measurement="c/kWh",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=_export_price,
+        attributes_fn=lambda c: {
+            "windows": [
+                {
+                    "start": w.start.isoformat(),
+                    "end": w.end.isoformat(),
+                    "export_cents_per_kwh": w.export_cents,
+                }
+                for w in c.tariff.export_windows
+            ]
+            if c.tariff
+            else [],
+        },
+    ),
+    HubSensorDescription(
+        key="daily_supply_charge",
+        translation_key="daily_supply_charge",
+        native_unit_of_measurement="c",
+        suggested_display_precision=2,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=_supply_charge,
+    ),
+    HubSensorDescription(
+        key="active_constraints",
+        translation_key="active_constraints",
+        value_fn=_constraints,
+    ),
+    HubSensorDescription(
+        key="projected_cost",
+        translation_key="projected_cost",
+        device_class=SensorDeviceClass.MONETARY,
+        native_unit_of_measurement="AUD",
+        suggested_display_precision=2,
+        value_fn=_projected_cost,
+    ),
+    HubSensorDescription(
+        key="outdoor_temperature",
+        translation_key="outdoor_temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda c: c.outdoor_reading(),
+    ),
+    HubSensorDescription(
+        key="rooms_configured",
+        translation_key="rooms_configured",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda c: len(c.rooms),
+        attributes_fn=lambda c: {
+            "rooms": sorted(room.name for room in c.rooms.values())
+        },
+    ),
+)
+
+
+def hub_device_info(entry: HvacConfigEntry) -> DeviceInfo:
+    """The house-wide device every global setting appears under."""
+    return DeviceInfo(
+        identifiers={(DOMAIN, entry.entry_id)},
+        name="HVAC Coordinator",
+        manufacturer="HVAC Coordinator",
+        model="Coordinator",
+        entry_type=DeviceEntryType.SERVICE,
+    )
+
+
+class HubSensor(CoordinatorEntity[HvacCoordinator], SensorEntity):
+    """A house-wide value, visible rather than buried in a config form."""
+
+    _attr_has_entity_name = True
+    entity_description: HubSensorDescription
+
+    def __init__(
+        self,
+        coordinator: HvacCoordinator,
+        entry: HvacConfigEntry,
+        description: HubSensorDescription,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._attr_unique_id = f"{entry.entry_id}_{description.key}"
+        self._attr_device_info = hub_device_info(entry)
+
+    @property
+    def native_value(self) -> str | float | None:
+        """Return the current value."""
+        return self.entity_description.value_fn(self.coordinator)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return the supporting detail."""
+        if self.entity_description.attributes_fn is None:
+            return None
+        return self.entity_description.attributes_fn(self.coordinator)
+
+
 class DemandForecastSensor(CoordinatorEntity[HvacCoordinator], SensorEntity):
     """Projected HVAC energy over the horizon.
 
@@ -174,13 +383,7 @@ class DemandForecastSensor(CoordinatorEntity[HvacCoordinator], SensorEntity):
         """Initialize the forecast sensor."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{entry.entry_id}_demand_forecast"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name="HVAC Coordinator",
-            manufacturer="HVAC Coordinator",
-            model="Coordinator",
-            entry_type=DeviceEntryType.SERVICE,
-        )
+        self._attr_device_info = hub_device_info(entry)
 
     @property
     def available(self) -> bool:

@@ -1,8 +1,8 @@
 """HVAC Coordinator — Layer 3.
 
-Owns rooms, modes, the comfort index, tariff constraints, actuator ordering and
-the decision trace. It writes climate entities through Versatile Thermostat and
-covers through Adaptive Cover Pro. It never writes battery actuators.
+Owns rooms, modes, the comfort index, tariff constraints, actuator ordering,
+the thermal model and the decision trace. It commands climate entities and
+covers directly. It never writes battery actuators.
 """
 
 from __future__ import annotations

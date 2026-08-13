@@ -9,7 +9,7 @@ import importlib
 import sys
 import types
 import unittest
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 
 # The package __init__ imports Home Assistant, which is not installed here and
@@ -214,6 +214,7 @@ class TestModePrecedence(unittest.TestCase):
                 presence=True,
                 precool_opportunity=True,
                 forecast_demand_ahead=True,
+                air_moving=True,
             ),
         )
         expected = dry_bulb_for_index(25.0, 55.0)
@@ -267,7 +268,9 @@ class TestActuatorOrdering(unittest.TestCase):
         self.assertTrue(any("no sun on this room" in r for r in trace.rejected))
 
     def test_fan_when_marginally_above_band(self):
-        # Band high is 28.0; the fan margin is 0.5 HCI. 28 C at 35% reads 28.35.
+        # Band high is 28.0; the fan margin is 0.5 HCI. 28 C at 35% reads 28.35
+        # with the air already moving, which is the case where a fan is the
+        # right answer rather than an escalation.
         temp = 28.0
         rh = 35.0
         self.assertGreater(comfort_index(temp, rh), 28.0)
@@ -275,7 +278,11 @@ class TestActuatorOrdering(unittest.TestCase):
         trace = evaluate_room(
             room(),
             RoomInputs(
-                now=NOW, temperature_c=temp, relative_humidity=rh, presence=True
+                now=NOW,
+                temperature_c=temp,
+                relative_humidity=rh,
+                presence=True,
+                air_moving=True,
             ),
         )
         self.assertIs(trace.actuator, ActuatorStep.FAN)
@@ -464,6 +471,7 @@ class TestUnoccupiedAndHeadingHome(unittest.TestCase):
                 relative_humidity=55.0,
                 presence=False,
                 heading_home=True,
+                air_moving=True,
             ),
         )
         self.assertIs(trace.mode, Mode.PRECONDITION)
@@ -1025,6 +1033,7 @@ class TestUnitCapabilities(unittest.TestCase):
         self.assertIs(trace.actuator, ActuatorStep.NONE)
 
 
+_hci = importlib.import_module("hvac_core.hci")
 _thermal = importlib.import_module("hvac_core.thermal")
 _forecast = importlib.import_module("hvac_core.forecast")
 
@@ -1448,3 +1457,332 @@ class TestLockoutIsOneField(unittest.TestCase):
             {"name": "Office", "climate_entity_id": "climate.o", "lockout_reason": "  "}
         )
         self.assertIsNone(room["lockout_reason"])
+
+
+_grace = importlib.import_module("hvac_core.grace")
+_tariff_mod = importlib.import_module("hvac_core.tariff")
+
+
+class TestOccupancyGrace(unittest.TestCase):
+    """Raw presence is the wrong signal for a compressor."""
+
+    def setUp(self):
+        self.state = _grace.GraceState()
+        self.settings = _grace.GraceSettings()
+        self.t = NOW
+
+    def _step(self, present, minutes=0):
+        self.t = self.t + timedelta(minutes=minutes)
+        return _grace.evaluate_grace(self.state, present, self.t, self.settings)
+
+    def test_a_grab_and_go_visit_never_starts_the_room(self):
+        """Someone drops a laptop off and leaves. No compressor start."""
+        self.assertFalse(self._step(True).occupied)
+        self.assertFalse(self._step(True, 1).occupied)
+        self.assertFalse(self._step(False, 0.5).occupied)
+        self.assertFalse(self.state.occupied)
+
+    def test_sustained_presence_starts_the_room(self):
+        self.assertFalse(self._step(True).occupied)
+        self.assertTrue(self._step(True, 2).occupied)
+
+    def test_answering_the_front_door_does_not_stop_the_room(self):
+        """The delivery case. Five minutes away must not shut the room down."""
+        self._step(True)
+        self.assertTrue(self._step(True, 2).occupied)
+        self._step(False)
+        self.assertTrue(self._step(False, 2).occupied)
+        result = self._step(False, 3)
+        self.assertTrue(result.occupied)
+        self.assertIn("holding in case they return", result.reason)
+
+    def test_returning_resets_the_absence(self):
+        self._step(True)
+        self._step(True, 2)
+        self._step(False)
+        self._step(False, 8)
+        self.assertTrue(self._step(True, 1).occupied)
+        # Away again: the clock restarts, so 8 minutes is not cumulative.
+        self._step(False)
+        self.assertTrue(self._step(False, 8).occupied)
+
+    def test_a_long_absence_finally_stops_the_room(self):
+        self._step(True)
+        self._step(True, 2)
+        # The vacancy clock starts when they leave, so departure is registered
+        # first and the elapsed time is measured from there.
+        self._step(False)
+        self.assertFalse(self._step(False, 11).occupied)
+
+    def test_a_returning_occupant_starts_again_without_waiting_twice(self):
+        self._step(True)
+        self._step(True, 2)
+        self._step(False)
+        self._step(False, 11)
+        self.assertFalse(self._step(True, 0.5).occupied)
+        self.assertTrue(self._step(True, 2).occupied)
+
+    def test_unknown_presence_holds_whatever_the_room_was(self):
+        self._step(True)
+        self._step(True, 2)
+        result = self._step(None, 30)
+        self.assertTrue(result.occupied)
+        self.assertIn("presence unknown", result.reason)
+
+    def test_unknown_presence_does_not_start_an_empty_room(self):
+        self.assertFalse(self._step(None, 30).occupied)
+
+
+class TestGraceAnnouncements(unittest.TestCase):
+    def setUp(self):
+        self.state = _grace.GraceState()
+        self.settings = _grace.GraceSettings(announce=True)
+        self.t = NOW
+
+    def _step(self, present, minutes=0):
+        self.t = self.t + timedelta(minutes=minutes)
+        return _grace.evaluate_grace(self.state, present, self.t, self.settings)
+
+    def test_two_warnings_before_shutting_down(self):
+        self._step(True)
+        self._step(True, 2)
+
+        self._step(False)
+        first = self._step(False, 11)
+        self.assertIs(first.announcement, _grace.Announcement.FIRST_WARNING)
+        self.assertTrue(first.occupied, "must not shut off on the first warning")
+
+        quiet = self._step(False, 1)
+        self.assertIs(quiet.announcement, _grace.Announcement.NONE)
+        self.assertTrue(quiet.occupied)
+
+        final = self._step(False, 3)
+        self.assertIs(final.announcement, _grace.Announcement.FINAL_WARNING)
+        self.assertFalse(final.occupied)
+
+    def test_coming_back_after_the_warning_cancels_the_shutdown(self):
+        self._step(True)
+        self._step(True, 2)
+        self._step(False)
+        self.assertIs(
+            self._step(False, 11).announcement, _grace.Announcement.FIRST_WARNING
+        )
+        self.assertTrue(self._step(True, 1).occupied)
+        self.assertIsNone(self.state.warned_at)
+        # And a fresh absence warns again rather than shutting off silently.
+        self._step(False)
+        self.assertIs(
+            self._step(False, 11).announcement, _grace.Announcement.FIRST_WARNING
+        )
+
+    def test_announcements_off_shuts_down_without_speaking(self):
+        self.settings = _grace.GraceSettings(announce=False)
+        self._step(True)
+        self._step(True, 2)
+        self._step(False)
+        result = self._step(False, 11)
+        self.assertFalse(result.occupied)
+        self.assertIs(result.announcement, _grace.Announcement.NONE)
+
+    def test_defaults_are_sensible_out_of_the_box(self):
+        defaults = _grace.GraceSettings()
+        self.assertEqual(defaults.occupied_after, timedelta(minutes=2))
+        self.assertEqual(defaults.vacant_after, timedelta(minutes=10))
+        self.assertEqual(defaults.warning_grace, timedelta(minutes=3))
+        self.assertFalse(defaults.announce, "a house should not start talking")
+
+    def test_settings_come_from_minutes(self):
+        settings = _grace.GraceSettings.from_minutes(5, 20, 2, True)
+        self.assertEqual(settings.occupied_after, timedelta(minutes=5))
+        self.assertEqual(settings.vacant_after, timedelta(minutes=20))
+        self.assertTrue(settings.announce)
+
+    def test_missing_values_fall_back_to_defaults(self):
+        settings = _grace.GraceSettings.from_minutes()
+        self.assertEqual(settings.vacant_after, timedelta(minutes=10))
+
+
+class TestRadiantComfort(unittest.TestCase):
+    """Air temperature and humidity cannot see sun, still air or equipment."""
+
+    def test_sun_through_glass_raises_the_index(self):
+        shaded = comfort_index(24.0, 60.0)
+        sunlit = comfort_index(24.0, 60.0, radiant=1.0)
+        self.assertGreater(sunlit, shaded)
+
+    def test_a_half_closed_blind_passes_about_half(self):
+        """A 50% blind is not 'no sun'. This is the case that was wrong."""
+        fraction = _hci.radiant_load(
+            direct_sun=True, cover_position=50.0, has_covers=True
+        )
+        self.assertGreater(fraction, 0.4)
+        self.assertLess(fraction, 0.7)
+
+    def test_a_closed_blind_still_passes_some(self):
+        """It absorbs the energy and re-radiates it inward."""
+        fraction = _hci.radiant_load(
+            direct_sun=True, cover_position=0.0, has_covers=True
+        )
+        self.assertGreater(fraction, 0.0)
+        self.assertLess(fraction, 0.3)
+
+    def test_no_sun_means_no_radiant_load_whatever_the_blind(self):
+        for position in (0.0, 50.0, 100.0):
+            self.assertEqual(
+                _hci.radiant_load(
+                    direct_sun=False, cover_position=position, has_covers=True
+                ),
+                0.0,
+            )
+
+    def test_a_room_with_no_covers_takes_all_of_it(self):
+        self.assertEqual(
+            _hci.radiant_load(direct_sun=True, cover_position=None, has_covers=False),
+            1.0,
+        )
+
+    def test_still_air_and_heat_load_each_raise_the_index(self):
+        base = comfort_index(24.0, 60.0)
+        self.assertGreater(comfort_index(24.0, 60.0, still_air=True), base)
+        self.assertGreater(comfort_index(24.0, 60.0, heat_load=True), base)
+
+    def test_the_office_case(self):
+        """Sitting in a sunlit room behind a half blind, no airflow, PC on.
+
+        The air-only index calls this comfortable. The corrected index does
+        not, which is the whole reason the corrections exist.
+        """
+        radiant = _hci.radiant_load(
+            direct_sun=True, cover_position=50.0, has_covers=True
+        )
+        air_only = comfort_index(24.0, 60.0)
+        felt = comfort_index(
+            24.0, 60.0, radiant=radiant, still_air=True, heat_load=True
+        )
+        self.assertLess(air_only, 27.5, "air-only index reads as comfortable")
+        self.assertGreater(felt, 27.5, "corrected index reads as warm")
+
+    def test_a_sunlit_room_is_asked_for_colder_air(self):
+        shaded = dry_bulb_for_index(25.5, 60.0)
+        sunlit = dry_bulb_for_index(25.5, 60.0, radiant=1.0, still_air=True)
+        self.assertLess(sunlit, shaded)
+
+    def test_the_inverse_round_trips_with_corrections(self):
+        for radiant in (0.0, 0.5, 1.0):
+            for still in (True, False):
+                target = dry_bulb_for_index(
+                    26.0, 60.0, radiant=radiant, still_air=still
+                )
+                self.assertAlmostEqual(
+                    comfort_index(target, 60.0, radiant=radiant, still_air=still),
+                    26.0,
+                    places=2,
+                )
+
+    def test_the_trace_shows_what_the_corrections_added(self):
+        trace = evaluate_room(
+            room(),
+            RoomInputs(
+                now=NOW,
+                temperature_c=24.0,
+                relative_humidity=60.0,
+                presence=True,
+                has_covers=True,
+                cover_position=50.0,
+                direct_sun=True,
+                heat_load=True,
+            ),
+        )
+        self.assertIsNotNone(trace.hci_base)
+        self.assertGreater(trace.hci, trace.hci_base)
+        self.assertTrue(any("index raised" in r for r in trace.reasons))
+        attributes = trace.as_attributes()
+        self.assertIn("hci_air_only", attributes)
+        self.assertIn("radiant_fraction", attributes)
+
+
+class TestTariffCosts(unittest.TestCase):
+    """Prices are carried and reported; no decision depends on them."""
+
+    def _schedule(self):
+        return TariffSchedule(
+            (
+                TariffWindow(time(0, 0), time(16, 0), "off_peak", import_cents=22.5),
+                TariffWindow(time(16, 0), time(0, 0), "peak", import_cents=48.9),
+            ),
+            (_tariff_mod.ExportWindow(time(0, 0), time(0, 0), 5.0),),
+            daily_supply_cents=118.0,
+        )
+
+    def test_import_price_varies_by_window(self):
+        schedule = self._schedule()
+        self.assertEqual(schedule.import_cents_at(time(9, 0)), 22.5)
+        self.assertEqual(schedule.import_cents_at(time(18, 0)), 48.9)
+
+    def test_a_flat_feed_in_applies_all_day(self):
+        schedule = self._schedule()
+        for hour in range(24):
+            self.assertEqual(schedule.export_cents_at(time(hour, 0)), 5.0)
+
+    def test_feed_in_can_vary_by_window(self):
+        schedule = TariffSchedule(
+            (TariffWindow(time(0, 0), time(0, 0), "flat"),),
+            (
+                _tariff_mod.ExportWindow(time(0, 0), time(12, 0), 12.0),
+                _tariff_mod.ExportWindow(time(12, 0), time(0, 0), 3.0),
+            ),
+        )
+        self.assertEqual(schedule.export_cents_at(time(9, 0)), 12.0)
+        self.assertEqual(schedule.export_cents_at(time(15, 0)), 3.0)
+
+    def test_no_feed_in_configured_reports_none(self):
+        schedule = TariffSchedule((TariffWindow(time(0, 0), time(0, 0), "flat"),))
+        self.assertIsNone(schedule.export_cents_at(time(9, 0)))
+
+    def test_daily_supply_charge_is_carried(self):
+        self.assertEqual(self._schedule().daily_supply_cents, 118.0)
+
+    def test_a_window_without_a_price_is_still_valid(self):
+        """Prices are optional: the controller's decisions do not use them."""
+        schedule = TariffSchedule((TariffWindow(time(0, 0), time(0, 0), "flat"),))
+        self.assertIsNone(schedule.import_cents_at(time(9, 0)))
+
+
+class TestTariffEditing(unittest.TestCase):
+    def test_a_window_round_trips_through_the_edit_form(self):
+        original = _forms.window_from_input(
+            {
+                "start": "16:00",
+                "end": "21:00",
+                "rate": "peak",
+                "import_cents_per_kwh": 48.9,
+                "constraints": ["no_grid_import"],
+                "coasting_permitted": False,
+            }
+        )
+        suggestions = _forms.window_as_suggestions(original)
+        self.assertEqual(_forms.window_from_input(suggestions), original)
+
+    def test_the_price_appears_in_the_window_description(self):
+        described = _forms.describe_window(
+            {
+                "start": "16:00:00",
+                "end": "21:00:00",
+                "rate": "peak",
+                "import_cents_per_kwh": 48.9,
+            }
+        )
+        self.assertIn("48.9", described)
+
+    def test_a_flat_export_window_covers_the_whole_day(self):
+        window = _forms.export_window_from_input({"export_cents_per_kwh": 5.0})
+        self.assertEqual(window["start"], window["end"])
+        self.assertIn("all day", _forms.describe_export_window(window))
+
+    def test_a_partial_export_window_is_described_by_its_span(self):
+        window = _forms.export_window_from_input(
+            {"export_cents_per_kwh": 12.0, "start": "06:00", "end": "12:00"}
+        )
+        described = _forms.describe_export_window(window)
+        self.assertIn("06:00", described)
+        self.assertIn("12.0", described)

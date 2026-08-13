@@ -51,9 +51,8 @@ Three possible causes, and the trace distinguishes them:
 - `covers: already closed against the gain` — working as designed; the ordering
   has escalated to the next step
 
-If covers never move on a room the sun clearly reaches, the room has no "Sun on
-this room's windows" sensor and is falling back to sun-above-horizon. Point it
-at Adaptive Cover Pro's "Sun Infront" sensor for that cover.
+If covers never move on a room the sun clearly reaches, the room has no window
+direction set. Choose which way its windows face in Configure.
 
 ## The unit never runs in a mode I expected
 

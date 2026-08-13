@@ -12,6 +12,8 @@ from itertools import pairwise
 from typing import Any
 
 from .const import (
+    CONF_ANNOUNCE,
+    CONF_ANNOUNCE_TARGETS,
     CONF_BAND_HIGH,
     CONF_BAND_LOW,
     CONF_CLIMATE_ENTITY,
@@ -20,9 +22,12 @@ from .const import (
     CONF_COVER_ENTITIES,
     CONF_DIRECT_SUN_ENTITY,
     CONF_END,
+    CONF_EXPORT_CENTS,
     CONF_HUMIDITY_ENTITY,
     CONF_ILLUMINANCE_ENTITY,
+    CONF_IMPORT_CENTS,
     CONF_LOCKOUT_REASON,
+    CONF_OCCUPIED_AFTER,
     CONF_OPENING_ENTITIES,
     CONF_PRESENCE_ENTITY,
     CONF_RATE,
@@ -30,11 +35,18 @@ from .const import (
     CONF_SLEEP_SCHEDULE_ENTITY,
     CONF_START,
     CONF_TEMPERATURE_ENTITY,
+    CONF_VACANT_AFTER,
+    CONF_WARNING_GRACE,
     CONF_WINDOW_DIRECTION,
     DEFAULT_BANDS,
     DEFAULT_LOCKOUT_REASONS,
     DEFAULT_RATE_LABELS,
     NOT_LOCKED_OUT,
+)
+from .grace import (
+    DEFAULT_OCCUPIED_AFTER,
+    DEFAULT_VACANT_AFTER,
+    DEFAULT_WARNING_GRACE,
 )
 from .models import Mode
 
@@ -68,6 +80,11 @@ def room_from_input(user_input: dict[str, Any]) -> dict[str, Any]:
         CONF_WINDOW_DIRECTION: user_input.get(CONF_WINDOW_DIRECTION),
         CONF_OPENING_ENTITIES: user_input.get(CONF_OPENING_ENTITIES, []),
         CONF_COVER_ENTITIES: user_input.get(CONF_COVER_ENTITIES, []),
+        CONF_OCCUPIED_AFTER: user_input.get(CONF_OCCUPIED_AFTER),
+        CONF_VACANT_AFTER: user_input.get(CONF_VACANT_AFTER),
+        CONF_WARNING_GRACE: user_input.get(CONF_WARNING_GRACE),
+        CONF_ANNOUNCE: bool(user_input.get(CONF_ANNOUNCE, False)),
+        CONF_ANNOUNCE_TARGETS: user_input.get(CONF_ANNOUNCE_TARGETS, []),
         CONF_LOCKOUT_REASON: _lockout_reason(user_input.get(CONF_LOCKOUT_REASON)),
     }
 
@@ -123,6 +140,16 @@ def default_band_suggestions() -> dict[str, float]:
     return bands_as_suggestions(DEFAULT_BANDS)
 
 
+def default_grace_suggestions() -> dict[str, float | bool]:
+    """Grace timings the room form arrives pre-filled with."""
+    return {
+        CONF_OCCUPIED_AFTER: DEFAULT_OCCUPIED_AFTER.total_seconds() / 60,
+        CONF_VACANT_AFTER: DEFAULT_VACANT_AFTER.total_seconds() / 60,
+        CONF_WARNING_GRACE: DEFAULT_WARNING_GRACE.total_seconds() / 60,
+        CONF_ANNOUNCE: False,
+    }
+
+
 def known_lockout_reasons(stored: list[str]) -> list[str]:
     """The lockout dropdown: not-locked-out first, then every known reason."""
     return [NOT_LOCKED_OUT, *sorted({*DEFAULT_LOCKOUT_REASONS, *stored})]
@@ -163,6 +190,7 @@ def window_from_input(user_input: dict[str, Any]) -> dict[str, Any]:
         CONF_START: _as_time_string(user_input[CONF_START]),
         CONF_END: _as_time_string(user_input[CONF_END]),
         CONF_RATE: str(user_input[CONF_RATE]).strip(),
+        CONF_IMPORT_CENTS: user_input.get(CONF_IMPORT_CENTS),
         CONF_CONSTRAINTS: list(user_input.get(CONF_CONSTRAINTS, [])),
         CONF_COASTING_PERMITTED: bool(user_input.get(CONF_COASTING_PERMITTED, True)),
     }
@@ -194,8 +222,13 @@ def describe_window(window: dict[str, Any]) -> str:
     end = str(window.get(CONF_END, "?"))[:5]
     rate = window.get(CONF_RATE, "?")
     constraints = window.get(CONF_CONSTRAINTS) or []
-    suffix = f" — {', '.join(sorted(constraints))}" if constraints else ""
-    return f"{start}–{end}  {rate}{suffix}"
+    price = window.get(CONF_IMPORT_CENTS)
+    parts = [f"{start}–{end}", str(rate)]
+    if price is not None:
+        parts.append(f"{price}c/kWh")
+    if constraints:
+        parts.append(", ".join(sorted(constraints)))
+    return "  ".join(parts[:2]) + ("  " + " — ".join(parts[2:]) if parts[2:] else "")
 
 
 def schedule_gaps(windows: list[dict[str, Any]]) -> list[str]:
@@ -228,3 +261,38 @@ def schedule_gaps(windows: list[dict[str, Any]]) -> list[str]:
         problems.append(f"nothing covers {last_end} to midnight")
 
     return problems
+
+
+def export_window_from_input(user_input: dict[str, Any]) -> dict[str, Any]:
+    """Turn the feed-in form into a stored export window.
+
+    A flat all-day rate is a window whose start equals its end, which is how
+    the schedule expresses "the whole day". Adding a second window is what
+    turns a flat rate into a time-varying one.
+    """
+    return {
+        CONF_START: _as_time_string(user_input.get(CONF_START, "00:00:00")),
+        CONF_END: _as_time_string(user_input.get(CONF_END, "00:00:00")),
+        CONF_EXPORT_CENTS: float(user_input[CONF_EXPORT_CENTS]),
+    }
+
+
+def describe_export_window(window: dict[str, Any]) -> str:
+    """A one-line label for a feed-in window."""
+    start = str(window.get(CONF_START, "?"))[:5]
+    end = str(window.get(CONF_END, "?"))[:5]
+    cents = window.get(CONF_EXPORT_CENTS, 0)
+    span = "all day" if start == end else f"{start}\u2013{end}"
+    return f"{span}  {cents}c/kWh"
+
+
+def window_as_suggestions(window: dict[str, Any]) -> dict[str, Any]:
+    """Flatten a stored window back into form values, for editing."""
+    return {
+        CONF_START: window.get(CONF_START),
+        CONF_END: window.get(CONF_END),
+        CONF_RATE: window.get(CONF_RATE),
+        CONF_IMPORT_CENTS: window.get(CONF_IMPORT_CENTS),
+        CONF_CONSTRAINTS: list(window.get(CONF_CONSTRAINTS) or []),
+        CONF_COASTING_PERMITTED: window.get(CONF_COASTING_PERMITTED, True),
+    }

@@ -13,6 +13,7 @@ from __future__ import annotations
 from datetime import datetime, time
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import (
     Event,
     EventStateChangedData,
@@ -20,7 +21,7 @@ from homeassistant.core import (
     State,
     callback,
 )
-from homeassistant.exceptions import ConfigEntryError
+from homeassistant.exceptions import ConfigEntryError, HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.event import async_track_state_change_event
@@ -30,6 +31,8 @@ from homeassistant.util import dt as dt_util
 from .actuator import Actuator, mean_cover_position, supported_hvac_modes
 from .const import (
     COAST_HORIZON_HOURS,
+    CONF_ANNOUNCE,
+    CONF_ANNOUNCE_TARGETS,
     CONF_BAND_HIGH,
     CONF_BAND_LOW,
     CONF_BANDS,
@@ -37,11 +40,18 @@ from .const import (
     CONF_COASTING_PERMITTED,
     CONF_CONSTRAINTS,
     CONF_COVER_ENTITIES,
+    CONF_DAILY_SUPPLY_CENTS,
     CONF_DIRECT_SUN_ENTITY,
     CONF_END,
+    CONF_EXPORT_CENTS,
+    CONF_EXPORT_WINDOWS,
+    CONF_FAN_ENTITY,
+    CONF_HEAT_LOAD_ENTITY,
     CONF_HUMIDITY_ENTITY,
     CONF_ILLUMINANCE_ENTITY,
+    CONF_IMPORT_CENTS,
     CONF_LOCKOUT_REASON,
+    CONF_OCCUPIED_AFTER,
     CONF_OPENING_ENTITIES,
     CONF_OUTDOOR_TEMPERATURE_ENTITY,
     CONF_PRESENCE_ENTITY,
@@ -52,6 +62,8 @@ from .const import (
     CONF_START,
     CONF_TARIFF_WINDOWS,
     CONF_TEMPERATURE_ENTITY,
+    CONF_VACANT_AFTER,
+    CONF_WARNING_GRACE,
     CONF_WINDOW_DIRECTION,
     DOMAIN,
     EVALUATION_INTERVAL,
@@ -66,6 +78,7 @@ from .forecast import (
     RoomForecastInput,
     build_forecast,
 )
+from .grace import Announcement, GraceSettings, GraceState, evaluate_grace
 from .hci import ComfortBand, dry_bulb_for_index
 from .models import DecisionTrace, Mode, RoomConfig, RoomInputs
 from .modes import evaluate_room
@@ -74,6 +87,7 @@ from .sun import azimuth_for_direction, sun_on_window
 from .tariff import (
     CONSTRAINT_NO_GRID_IMPORT,
     CONSTRAINT_PRECOOL_OPPORTUNITY,
+    ExportWindow,
     TariffSchedule,
     TariffWindow,
 )
@@ -118,6 +132,14 @@ class HvacCoordinator(DataUpdateCoordinator[dict[str, DecisionTrace]]):
         self._previous: dict[str, tuple[datetime, float, float, int, bool]] = {}
         #: The published demand forecast. Never contains vendor concepts.
         self.forecast: DemandForecast | None = None
+        #: Occupancy grace, one per room. Raw presence is the wrong signal for
+        #: a compressor: someone dropping a laptop off should not start it, and
+        #: someone signing for a delivery should not stop it.
+        self._grace: dict[str, GraceState] = {}
+        #: Why each room is considered occupied or not, for the trace.
+        self._grace_reason: dict[str, str] = {}
+        #: Announcements raised this evaluation, dispatched after it.
+        self._pending_announcements: list[tuple[RoomConfig, Announcement]] = []
         #: Entities currently logged as unavailable, so each transition is
         #: recorded once rather than on every evaluation.
         self._unavailable: set[str] = set()
@@ -232,11 +254,14 @@ class HvacCoordinator(DataUpdateCoordinator[dict[str, DecisionTrace]]):
     async def _async_evaluate(self, now: datetime) -> dict[str, DecisionTrace]:
         """Learn from the last interval, evaluate every room, then act."""
         traces: dict[str, DecisionTrace] = {}
+        self._pending_announcements.clear()
         for room in self.rooms.values():
             inputs = self._inputs_for(room, now)
             self._learn(room, inputs, now)
             trace = evaluate_room(room, inputs)
             trace.model = self.model_for(room.room_id).diagnostics()
+            if reason := self._grace_reason.get(room.room_id):
+                trace.reasons.append(reason)
             traces[room.room_id] = trace
             LOGGER.debug(
                 "%s: mode=%s actuator=%s hci=%s target=%s",
@@ -248,6 +273,7 @@ class HvacCoordinator(DataUpdateCoordinator[dict[str, DecisionTrace]]):
             )
             await self.actuator.async_apply(room, trace)
 
+        await self._async_announce()
         self._async_remove_stale_devices(set(traces))
         self.forecast = self._build_forecast(now, traces)
         self._persist_models()
@@ -348,9 +374,64 @@ class HvacCoordinator(DataUpdateCoordinator[dict[str, DecisionTrace]]):
             return outdoor > indoor + PRECOOL_DEMAND_MARGIN_C
         return drift > 0
 
+    def _graced_presence(self, room: RoomConfig, now: datetime) -> bool | None:
+        """Presence after the grace periods, not the raw sensor.
+
+        Announcements raised here are dispatched by the caller, so that this
+        stays a pure read of state.
+        """
+        if room.presence_entity_id is None:
+            return None
+
+        state = self._grace.setdefault(room.room_id, GraceState())
+        result = evaluate_grace(
+            state, self._bool(room.presence_entity_id), now, room.grace
+        )
+        self._grace_reason[room.room_id] = result.reason
+        if result.announcement is not Announcement.NONE:
+            self._pending_announcements.append((room, result.announcement))
+        return result.occupied
+
+    def outdoor_reading(self) -> float | None:
+        """The outdoor temperature, for the house-wide sensor."""
+        return self._number(self.outdoor_entity_id)
+
+    def _air_moving(self, room: RoomConfig) -> bool:
+        """Whether the room's air is moving.
+
+        A configured fan entity answers it directly. Otherwise the air
+        conditioner itself counts: any mode other than off moves air.
+        """
+        if room.air_movement_entity_id and (
+            moving := self._bool(room.air_movement_entity_id)
+        ) is not None:
+            return moving
+        state = self.hass.states.get(room.climate_entity_id)
+        return state is not None and state.state not in ("off", "unavailable", "unknown")
+
     def _sleeping(self, room: RoomConfig) -> bool:
         """Whether the room's sleep schedule is currently on."""
         return self._bool(room.sleep_schedule_entity_id) is True
+
+    async def _async_announce(self) -> None:
+        """Speak any warnings raised this evaluation."""
+        for room, announcement in self._pending_announcements:
+            if not room.announce_target_entity_ids:
+                continue
+            message = _announcement_text(room, announcement)
+            try:
+                await self.hass.services.async_call(
+                    "tts",
+                    "speak",
+                    {
+                        ATTR_ENTITY_ID: list(room.announce_target_entity_ids),
+                        "message": message,
+                    },
+                    blocking=False,
+                )
+            except HomeAssistantError as err:
+                LOGGER.warning("Announcement for %s failed: %s", room.room_id, err)
+        self._pending_announcements.clear()
 
     def _compressor_direction(self, room: RoomConfig) -> int:
         """Whether the unit is moving sensible heat, and which way."""
@@ -435,6 +516,8 @@ class HvacCoordinator(DataUpdateCoordinator[dict[str, DecisionTrace]]):
             for room_id in stale:
                 self.actuator.forget(room_id)
             self.models.pop(room_id, None)
+            self._grace.pop(room_id, None)
+            self._grace_reason.pop(room_id, None)
             self._previous.pop(room_id, None)
             self.store.forget_room(room_id)
             if device := registry.async_get_device(identifiers={(DOMAIN, room_id)}):
@@ -453,9 +536,11 @@ class HvacCoordinator(DataUpdateCoordinator[dict[str, DecisionTrace]]):
             now=now,
             temperature_c=self._number(room.temperature_entity_id),
             relative_humidity=self._number(room.humidity_entity_id),
-            presence=self._bool(room.presence_entity_id),
+            presence=self._graced_presence(room, now),
             illuminance_lux=self._number(room.illuminance_entity_id),
             direct_sun=self._direct_sun(room),
+            heat_load=self._bool(room.heat_load_entity_id) is True,
+            air_moving=self._air_moving(room),
             has_covers=bool(room.cover_entity_ids),
             cover_position=mean_cover_position(self.hass, room.cover_entity_ids),
             **self._capabilities(room),
@@ -603,6 +688,8 @@ def _watched_entities(rooms: dict[str, RoomConfig]) -> set[str]:
                 room.presence_entity_id,
                 room.illuminance_entity_id,
                 room.direct_sun_entity_id,
+                room.heat_load_entity_id,
+                room.air_movement_entity_id,
                 room.sleep_schedule_entity_id,
             )
             if entity_id
@@ -664,6 +751,15 @@ def _room_from_raw(
         illuminance_entity_id=raw.get(CONF_ILLUMINANCE_ENTITY),
         direct_sun_entity_id=raw.get(CONF_DIRECT_SUN_ENTITY),
         window_direction=raw.get(CONF_WINDOW_DIRECTION),
+        heat_load_entity_id=raw.get(CONF_HEAT_LOAD_ENTITY),
+        air_movement_entity_id=raw.get(CONF_FAN_ENTITY),
+        grace=GraceSettings.from_minutes(
+            occupied_after=raw.get(CONF_OCCUPIED_AFTER),
+            vacant_after=raw.get(CONF_VACANT_AFTER),
+            warning_grace=raw.get(CONF_WARNING_GRACE),
+            announce=bool(raw.get(CONF_ANNOUNCE, False)),
+        ),
+        announce_target_entity_ids=tuple(raw.get(CONF_ANNOUNCE_TARGETS, []) or []),
         opening_entity_ids=tuple(raw.get(CONF_OPENING_ENTITIES, []) or []),
         cover_entity_ids=tuple(raw.get(CONF_COVER_ENTITIES, []) or []),
         lockout_reason=raw.get(CONF_LOCKOUT_REASON),
@@ -683,14 +779,43 @@ def _tariff_from_entry(entry: HvacConfigEntry) -> TariffSchedule | None:
                 start=time.fromisoformat(raw[CONF_START]),
                 end=time.fromisoformat(raw[CONF_END]),
                 rate=raw[CONF_RATE],
+                import_cents=raw.get(CONF_IMPORT_CENTS),
                 constraints=frozenset(raw.get(CONF_CONSTRAINTS, []) or []),
                 coasting_permitted=raw.get(CONF_COASTING_PERMITTED, True),
             )
             for raw in raw_windows
         )
-        return TariffSchedule(windows)
+        exports = tuple(
+            ExportWindow(
+                start=time.fromisoformat(raw[CONF_START]),
+                end=time.fromisoformat(raw[CONF_END]),
+                export_cents=float(raw[CONF_EXPORT_CENTS]),
+            )
+            for raw in entry.options.get(
+                CONF_EXPORT_WINDOWS, entry.data.get(CONF_EXPORT_WINDOWS, [])
+            )
+        )
+        return TariffSchedule(
+            windows,
+            exports,
+            entry.options.get(
+                CONF_DAILY_SUPPLY_CENTS,
+                entry.data.get(CONF_DAILY_SUPPLY_CENTS),
+            ),
+        )
     except (KeyError, TypeError, ValueError) as err:
         # A broken tariff must not take the whole integration down. Rooms still
         # hold their comfort bands; only the window-driven behaviour is lost.
         LOGGER.error("Tariff schedule is invalid and has been ignored: %s", err)
         return None
+
+
+def _announcement_text(room: RoomConfig, announcement: Announcement) -> str:
+    """What to say. Plain, and it names the room so it is unambiguous."""
+    minutes = int(room.grace.vacant_after.total_seconds() // 60)
+    if announcement is Announcement.FIRST_WARNING:
+        return (
+            f"The {room.name} has been empty for {minutes} minutes and the air "
+            "conditioning is still running."
+        )
+    return f"Turning the {room.name} air conditioning off."

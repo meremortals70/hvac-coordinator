@@ -57,15 +57,18 @@ Skipped when:
 
 **The gate is sun geometry, not light level.** A semi-transparent blind reads
 bright when it is fully closed, so illuminance would report nothing to block at
-exactly the moment the blind is already blocking. Point the room's "Sun on this
-room's windows" setting at a sensor that knows the sun's position relative to
-the glass — Adaptive Cover Pro publishes one per cover.
+exactly the moment the blind is already blocking.
 
-Without that sensor the controller falls back to whether the sun is above the
-horizon, which is true of the whole house and wrong for any room the sun never
-reaches.
+The controller works this out itself, from the sun position Home Assistant
+already publishes and the direction you told it the room's windows face. **No
+extra sensor and no other integration is involved.** A room with no direction
+set never uses its blinds, because it will not move them on a guess.
 
-Cover movement is delegated to Adaptive Cover Pro, which handles sun geometry,
+For a room too complicated for one compass direction — a corner room, or one
+shaded at certain hours — point its sun-on-window setting at your own binary
+sensor, which overrides the calculation.
+
+Cover control belongs to this integration, which handles sun geometry,
 venetian dual-axis sequencing and glare zones. This controller sets intent only.
 
 ## 2. Fan
@@ -92,7 +95,7 @@ the only cheaper step, so heating goes covers → compressor.
 
 | Step | Call |
 |---|---|
-| Covers | `adaptive_cover_pro.set_position` for covers that integration owns, `cover.set_cover_position` for any other. 0% to block gain, 100% to admit it |
+| Covers | `cover.set_cover_position`. 0% to block gain, 100% to admit it |
 | Fan | `fan_only`, plus the quietest fan mode and the least draughty swing the unit advertises |
 | Dry | `dry`, plus the quietest fan mode |
 | Compressor | `cool` or `heat`, plus the setpoint, a mixing fan mode and a mixing swing mode |
