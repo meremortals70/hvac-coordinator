@@ -50,6 +50,7 @@ INHERITED = {
     "config_entry",
     "coordinator",
     "trace",
+    "_room_id",
     "data",
     "defer",
     "entity_description",

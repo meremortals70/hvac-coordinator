@@ -16,6 +16,7 @@ from .const import (
     CONF_ANNOUNCE_TARGETS,
     CONF_BAND_HIGH,
     CONF_BAND_LOW,
+    CONF_BANDS,
     CONF_CLIMATE_ENTITY,
     CONF_COASTING_PERMITTED,
     CONF_CONSTRAINTS,
@@ -23,12 +24,16 @@ from .const import (
     CONF_DIRECT_SUN_ENTITY,
     CONF_END,
     CONF_EXPORT_CENTS,
+    CONF_FAN_ENTITY,
+    CONF_HEAT_LOAD_ENTITY,
     CONF_HUMIDITY_ENTITY,
     CONF_ILLUMINANCE_ENTITY,
     CONF_IMPORT_CENTS,
     CONF_LOCKOUT_REASON,
     CONF_OCCUPIED_AFTER,
     CONF_OPENING_ENTITIES,
+    CONF_OVERHANG_HEIGHT,
+    CONF_OVERHANG_PROJECTION,
     CONF_PRESENCE_ENTITY,
     CONF_RATE,
     CONF_ROOM_ID,
@@ -78,6 +83,8 @@ def room_from_input(user_input: dict[str, Any]) -> dict[str, Any]:
         CONF_ILLUMINANCE_ENTITY: user_input.get(CONF_ILLUMINANCE_ENTITY),
         CONF_DIRECT_SUN_ENTITY: user_input.get(CONF_DIRECT_SUN_ENTITY),
         CONF_WINDOW_DIRECTION: user_input.get(CONF_WINDOW_DIRECTION),
+        CONF_OVERHANG_PROJECTION: user_input.get(CONF_OVERHANG_PROJECTION),
+        CONF_OVERHANG_HEIGHT: user_input.get(CONF_OVERHANG_HEIGHT),
         CONF_OPENING_ENTITIES: user_input.get(CONF_OPENING_ENTITIES, []),
         CONF_COVER_ENTITIES: user_input.get(CONF_COVER_ENTITIES, []),
         CONF_OCCUPIED_AFTER: user_input.get(CONF_OCCUPIED_AFTER),
@@ -296,3 +303,111 @@ def window_as_suggestions(window: dict[str, Any]) -> dict[str, Any]:
         CONF_CONSTRAINTS: list(window.get(CONF_CONSTRAINTS) or []),
         CONF_COASTING_PERMITTED: window.get(CONF_COASTING_PERMITTED, True),
     }
+
+
+def describe_room(room: dict[str, Any]) -> str:
+    """A room's whole configuration, as readable lines.
+
+    Shown on the menu so the current settings can be read without opening the
+    form that set them. A configuration you have to edit to inspect is a
+    configuration nobody checks.
+    """
+    lines: list[str] = []
+
+    def entry(label: str, value: Any, suffix: str = "") -> None:
+        lines.append(f"  {label}: {value}{suffix}" if value else f"  {label}: —")
+
+    lines.append(f"**{room.get('name', '?')}**")
+    entry("Air conditioner", room.get(CONF_CLIMATE_ENTITY))
+    entry("Temperature", room.get(CONF_TEMPERATURE_ENTITY))
+    entry("Humidity", room.get(CONF_HUMIDITY_ENTITY))
+    entry("Presence", room.get(CONF_PRESENCE_ENTITY))
+    entry("Sleep schedule", room.get(CONF_SLEEP_SCHEDULE_ENTITY))
+    entry("Heat source", room.get(CONF_HEAT_LOAD_ENTITY))
+    entry("Air movement", room.get(CONF_FAN_ENTITY))
+    entry("Windows face", room.get(CONF_WINDOW_DIRECTION))
+
+    projection = room.get(CONF_OVERHANG_PROJECTION)
+    if projection:
+        height = room.get(CONF_OVERHANG_HEIGHT)
+        lines.append(f"  Overhang: {projection} m out, {height} m above the glass")
+    else:
+        lines.append("  Overhang: none")
+
+    openings = room.get(CONF_OPENING_ENTITIES) or []
+    covers = room.get(CONF_COVER_ENTITIES) or []
+    lines.append(f"  Windows and doors: {len(openings) or '—'}")
+    lines.append(f"  Blinds: {len(covers) or '—'}")
+
+    bands = room.get(CONF_BANDS) or {}
+    if bands:
+        described = ", ".join(
+            f"{mode} {v[CONF_BAND_LOW]}–{v[CONF_BAND_HIGH]}"
+            for mode, v in sorted(bands.items())
+        )
+        lines.append(f"  Bands: {described}")
+    else:
+        lines.append("  Bands: none — this room will never be actuated")
+
+    lines.append(
+        "  Waiting: {} min to start, {} min to stop".format(
+            room.get(CONF_OCCUPIED_AFTER, "?"), room.get(CONF_VACANT_AFTER, "?")
+        )
+    )
+    if room.get(CONF_ANNOUNCE):
+        targets = room.get(CONF_ANNOUNCE_TARGETS) or []
+        lines.append(f"  Announces before shutdown through {len(targets)} player(s)")
+
+    reason = room.get(CONF_LOCKOUT_REASON)
+    if reason:
+        lines.append(f"  **LOCKED OUT — {reason}**")
+
+    return "\n".join(lines)
+
+
+def describe_configuration(
+    rooms: list[dict[str, Any]],
+    windows: list[dict[str, Any]],
+    export_windows: list[dict[str, Any]],
+    daily_supply_cents: float | None,
+    outdoor_entity_id: str | None,
+) -> str:
+    """Everything currently configured, for the menu screen."""
+    lines: list[str] = []
+
+    lines.append("**Rooms**")
+    if rooms:
+        for room in rooms:
+            lines.append(describe_room(room))
+    else:
+        lines.append("  None configured.")
+
+    lines.append("")
+    lines.append("**Tariff** (applies to the whole house)")
+    if windows:
+        for window in sort_windows(windows):
+            lines.append(f"  {describe_window(window)}")
+        problems = schedule_gaps(windows)
+        if problems:
+            lines.append("  Incomplete — " + "; ".join(problems) + ".")
+            lines.append("  The schedule is ignored until it covers the whole day.")
+    else:
+        lines.append("  No windows configured.")
+
+    if export_windows:
+        for window in export_windows:
+            lines.append(f"  Feed-in: {describe_export_window(window)}")
+    else:
+        lines.append("  Feed-in: not configured")
+
+    lines.append(
+        f"  Daily supply charge: {daily_supply_cents}c"
+        if daily_supply_cents is not None
+        else "  Daily supply charge: not configured"
+    )
+
+    lines.append("")
+    lines.append("**House**")
+    lines.append(f"  Outdoor temperature: {outdoor_entity_id or '—'}")
+
+    return "\n".join(lines)

@@ -1786,3 +1786,134 @@ class TestTariffEditing(unittest.TestCase):
         described = _forms.describe_export_window(window)
         self.assertIn("06:00", described)
         self.assertIn("12.0", described)
+
+
+class TestOverhangShading(unittest.TestCase):
+    """An eave shades a window whenever the sun is high. Ignoring it is wrong."""
+
+    def test_a_typical_eave_shades_from_about_two_thirds_up(self):
+        cutoff = _sun.shading_elevation(0.9, 2.1)
+        self.assertGreater(cutoff, 60.0)
+        self.assertLess(cutoff, 72.0)
+
+    def test_a_deeper_eave_shades_from_lower(self):
+        shallow = _sun.shading_elevation(0.5, 2.1)
+        deep = _sun.shading_elevation(1.5, 2.1)
+        self.assertGreater(shallow, deep)
+
+    def test_no_overhang_described_means_no_shading(self):
+        self.assertIsNone(_sun.shading_elevation(None, 2.1))
+        self.assertIsNone(_sun.shading_elevation(0, 2.1))
+
+    def test_a_high_summer_sun_is_shaded_by_the_eave(self):
+        north = _sun.WINDOW_DIRECTIONS["north"]
+        self.assertFalse(
+            _sun.sun_on_window(
+                0.0, 78.0, north, overhang_projection_m=0.9, overhang_height_m=2.1
+            )
+        )
+
+    def test_a_low_winter_sun_reaches_under_the_eave(self):
+        north = _sun.WINDOW_DIRECTIONS["north"]
+        self.assertTrue(
+            _sun.sun_on_window(
+                0.0, 35.0, north, overhang_projection_m=0.9, overhang_height_m=2.1
+            )
+        )
+
+    def test_without_an_overhang_the_high_sun_still_counts(self):
+        north = _sun.WINDOW_DIRECTIONS["north"]
+        self.assertTrue(_sun.sun_on_window(0.0, 78.0, north))
+
+    def test_oblique_sun_slips_under_an_eave_that_would_shade_it_head_on(self):
+        """The eave projects less usefully when the sun is off to one side."""
+        west = _sun.WINDOW_DIRECTIONS["west"]
+        head_on = _sun.sun_on_window(
+            270.0, 70.0, west, overhang_projection_m=0.9, overhang_height_m=2.1
+        )
+        oblique = _sun.sun_on_window(
+            200.0, 70.0, west, overhang_projection_m=0.9, overhang_height_m=2.1
+        )
+        self.assertFalse(head_on)
+        self.assertTrue(oblique)
+
+
+class TestConfigurationIsReadable(unittest.TestCase):
+    """A configuration you must edit to inspect is one nobody checks."""
+
+    def _room(self, **overrides):
+        base = {
+            "room_id": "office",
+            "name": "Office",
+            "climate_entity_id": "climate.office",
+            "temperature_entity_id": "sensor.office_temp",
+            "bands": {"occupied": {"low": 24.0, "high": 27.0}},
+            "occupied_after_minutes": 2,
+            "vacant_after_minutes": 10,
+        }
+        base.update(overrides)
+        return base
+
+    def test_a_room_summary_names_what_is_set_and_what_is_not(self):
+        described = _forms.describe_room(self._room())
+        self.assertIn("Office", described)
+        self.assertIn("climate.office", described)
+        self.assertIn("sensor.office_temp", described)
+        self.assertIn("Humidity: —", described)
+        self.assertIn("Overhang: none", described)
+
+    def test_a_locked_out_room_says_so_prominently(self):
+        described = _forms.describe_room(
+            self._room(lockout_reason="Under renovation")
+        )
+        self.assertIn("LOCKED OUT", described)
+        self.assertIn("Under renovation", described)
+
+    def test_a_room_with_no_bands_is_flagged(self):
+        described = _forms.describe_room(self._room(bands={}))
+        self.assertIn("never be actuated", described)
+
+    def test_an_overhang_is_described_with_both_measurements(self):
+        described = _forms.describe_room(
+            self._room(overhang_projection_m=0.9, overhang_height_m=2.1)
+        )
+        self.assertIn("0.9", described)
+        self.assertIn("2.1", described)
+
+    def test_the_full_summary_separates_rooms_tariff_and_house(self):
+        summary = _forms.describe_configuration(
+            [self._room()],
+            [
+                {
+                    "start": "00:00:00",
+                    "end": "00:00:00",
+                    "rate": "flat",
+                    "import_cents_per_kwh": 30.0,
+                }
+            ],
+            [{"start": "00:00:00", "end": "00:00:00", "export_cents_per_kwh": 5.0}],
+            118.0,
+            "sensor.outdoor",
+        )
+        self.assertIn("**Rooms**", summary)
+        self.assertIn("**Tariff**", summary)
+        self.assertIn("whole house", summary)
+        self.assertIn("**House**", summary)
+        self.assertIn("118.0c", summary)
+        self.assertIn("sensor.outdoor", summary)
+
+    def test_an_empty_installation_says_so_rather_than_showing_nothing(self):
+        summary = _forms.describe_configuration([], [], [], None, None)
+        self.assertIn("None configured", summary)
+        self.assertIn("No windows configured", summary)
+        self.assertIn("Feed-in: not configured", summary)
+
+    def test_an_incomplete_tariff_is_called_out_in_the_summary(self):
+        summary = _forms.describe_configuration(
+            [],
+            [{"start": "06:00:00", "end": "18:00:00", "rate": "day"}],
+            [],
+            None,
+            None,
+        )
+        self.assertIn("Incomplete", summary)

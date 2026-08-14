@@ -93,6 +93,11 @@ class RoomConfig:
     #: Which way this room's windows face. With it, the controller works out
     #: sun-on-glass from the sun's position and needs no sensor at all.
     window_direction: str | None = None
+    #: How far an eave, soffit, balcony or verandah projects from the wall
+    #: above this window, in metres. Zero or unset means no overhang.
+    overhang_projection_m: float | None = None
+    #: How far that overhang sits above the bottom of the glass, in metres.
+    overhang_height_m: float | None = None
     opening_entity_ids: tuple[str, ...] = ()
     cover_entity_ids: tuple[str, ...] = ()
     #: How long presence must hold before starting, how long vacancy must

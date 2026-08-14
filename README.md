@@ -1,11 +1,11 @@
-# HVAC Coordinator
+# Abode HVAC Coordinator
 
 A Home Assistant integration that decides what your air conditioning should be
 doing, room by room, and tells you exactly why.
 
 **It never writes to your battery.**
 
-> ### Status: v0.5.1 — not yet proven
+> ### Status: v0.5.2 — not yet proven
 > Everything described here is built and unit tested. None of it has run for
 > long against real hardware. Treat your first week as a test and read
 > [Known limitations](docs/known-limitations.md) before you rely on it.
@@ -38,7 +38,7 @@ you can see the decision rather than guess at it.
 added a HACS custom repository, that page walks through it click by click.
 
 **2. Add the integration.** Settings → Devices & Services → Add Integration →
-HVAC Coordinator. It asks about your first room straight away.
+Abode HVAC Coordinator. It asks about your first room straight away.
 
 **3. Fill in the room.** Only two fields are required: a name, and the air
 conditioner. Everything else is optional and marked as such — add what you have.

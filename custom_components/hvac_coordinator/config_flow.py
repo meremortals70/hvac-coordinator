@@ -43,6 +43,8 @@ from .const import (
     CONF_OCCUPIED_AFTER,
     CONF_OPENING_ENTITIES,
     CONF_OUTDOOR_TEMPERATURE_ENTITY,
+    CONF_OVERHANG_HEIGHT,
+    CONF_OVERHANG_PROJECTION,
     CONF_PRESENCE_ENTITY,
     CONF_RATE,
     CONF_RATE_LABELS,
@@ -65,6 +67,7 @@ from .forms import (
     bands_from_input,
     default_band_suggestions,
     default_grace_suggestions,
+    describe_configuration,
     describe_export_window,
     describe_window,
     export_window_from_input,
@@ -117,6 +120,16 @@ ROOM_SCHEMA = vol.Schema(
 )
 
 
+def _metres_selector() -> selector.NumberSelector:
+    """A metres box, for the overhang measurements."""
+    return selector.NumberSelector(
+        selector.NumberSelectorConfig(
+            min=0, max=10, step=0.05, unit_of_measurement="m",
+            mode=selector.NumberSelectorMode.BOX,
+        )
+    )
+
+
 def _cents_selector() -> selector.NumberSelector:
     """A cents-per-unit box."""
     return selector.NumberSelector(
@@ -165,6 +178,8 @@ def room_schema(lockout_reasons: list[str]) -> vol.Schema:
             vol.Optional(CONF_ANNOUNCE_TARGETS): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="media_player", multiple=True)
             ),
+            vol.Optional(CONF_OVERHANG_PROJECTION): _metres_selector(),
+            vol.Optional(CONF_OVERHANG_HEIGHT): _metres_selector(),
             vol.Optional(CONF_WINDOW_DIRECTION): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=list(WINDOW_DIRECTIONS),
@@ -323,7 +338,7 @@ class HvacCoordinatorConfigFlow(_RoomSteps, ConfigFlow, domain=DOMAIN):
     def _save_room(self) -> ConfigFlowResult:
         """Create the entry with the first room in it."""
         return self.async_create_entry(
-            title="HVAC Coordinator",
+            title="Abode HVAC Coordinator",
             data={
                 CONF_ROOMS: [self._room],
                 CONF_TARIFF_WINDOWS: [],
@@ -363,6 +378,7 @@ class HvacCoordinatorOptionsFlow(_RoomSteps, OptionsFlow):
             return await self.async_step_room()
         return self.async_show_menu(
             step_id="init",
+            description_placeholders={"configuration": self._summary()},
             menu_options=[
                 "room",
                 "edit_room",
@@ -376,13 +392,31 @@ class HvacCoordinatorOptionsFlow(_RoomSteps, OptionsFlow):
             ],
         )
 
+    def _summary(self) -> str:
+        """Everything currently configured, shown on the menu itself."""
+        return describe_configuration(
+            self._rooms,
+            self._windows,
+            self._export_windows,
+            self.config_entry.options.get(
+                CONF_DAILY_SUPPLY_CENTS,
+                self.config_entry.data.get(CONF_DAILY_SUPPLY_CENTS),
+            ),
+            self.config_entry.options.get(
+                CONF_OUTDOOR_TEMPERATURE_ENTITY,
+                self.config_entry.data.get(CONF_OUTDOOR_TEMPERATURE_ENTITY),
+            ),
+        )
+
     async def async_step_edit_room(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Choose a room to edit, then reuse the room steps with it prefilled."""
         if user_input is None:
             return self.async_show_form(
-                step_id="edit_room", data_schema=self._room_choice_schema()
+                step_id="edit_room",
+                data_schema=self._room_choice_schema(),
+                description_placeholders={"configuration": self._summary()},
             )
         self._editing = user_input[CONF_ROOM_ID]
         return await self.async_step_room()
@@ -393,7 +427,9 @@ class HvacCoordinatorOptionsFlow(_RoomSteps, OptionsFlow):
         """Remove a room. Its device and entities go with it."""
         if user_input is None:
             return self.async_show_form(
-                step_id="remove_room", data_schema=self._room_choice_schema()
+                step_id="remove_room",
+                data_schema=self._room_choice_schema(),
+                description_placeholders={"configuration": self._summary()},
             )
         remaining = [
             room

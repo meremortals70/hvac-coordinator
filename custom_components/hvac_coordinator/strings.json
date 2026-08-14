@@ -3,27 +3,29 @@
     "step": {
       "room": {
         "title": "Add your first room",
-        "description": "Only the room name and the air conditioner are required. Leave anything you do not have empty.\n\n**Which way the windows face** lets the controller work out when the sun is actually on the glass, which is what decides whether closing a blind would achieve anything. Light level cannot answer that \u2014 a semi-transparent blind reads bright when fully closed. It needs no extra sensor; it uses the sun position Home Assistant already knows.\n\n**The two waiting times matter more than they look.** The first stops someone dropping a laptop off from starting the compressor. The second stops someone answering the front door from shutting it off \u2014 the room keeps running while they are briefly away, because stopping and starting costs more than the few minutes of running. The defaults are already filled in.\n\n**Lockout** means this room is never actuated. Leave it on \"Not locked out\" unless you mean it.",
+        "description": "Only the room name and the air conditioner are required. **An empty field means none** \u2014 that is a valid answer, not an unfinished one.\n\n**Which way the windows face** lets the controller work out when the sun is on the glass. It uses the latitude and longitude already set in Home Assistant, so it needs no sensor.\n\n**Eave or soffit depth** matters more than it looks. A window under an eave is fully shaded whenever the sun is high, which in summer is most of the middle of the day. Measure how far the eave projects from the wall, and how far it sits above the bottom of the glass. Leave both empty if there is no overhang.\n\n**The two waiting times** stop a laptop drop-off starting the compressor, and stop answering the front door shutting it off.\n\n**Lockout** means this room is never actuated. Leave it on 'Not locked out' unless you mean it.",
         "data": {
           "name": "Room name",
           "climate_entity_id": "Air conditioner",
-          "temperature_entity_id": "Temperature sensor (optional)",
-          "humidity_entity_id": "Humidity sensor (optional)",
-          "presence_entity_id": "Presence sensor (optional)",
-          "sleep_schedule_entity_id": "Sleep schedule (optional)",
-          "illuminance_entity_id": "Illuminance sensor (optional, recorded only)",
-          "window_direction": "Which way the windows face (optional)",
-          "direct_sun_entity_id": "Sun-on-window sensor (optional, overrides the above)",
-          "opening_entity_ids": "Windows and doors (optional)",
-          "cover_entity_ids": "Blinds (optional)",
+          "temperature_entity_id": "Temperature sensor (optional \u2014 leave empty for none)",
+          "humidity_entity_id": "Humidity sensor (optional \u2014 leave empty for none)",
+          "presence_entity_id": "Presence sensor (optional \u2014 leave empty for none)",
+          "sleep_schedule_entity_id": "Sleep schedule (optional \u2014 leave empty for none, e.g. an office)",
+          "illuminance_entity_id": "Illuminance sensor (optional \u2014 recorded only, not used)",
+          "window_direction": "Which way the windows face (optional \u2014 leave empty for none)",
+          "direct_sun_entity_id": "Sun-on-window sensor (optional \u2014 leave empty and it is calculated)",
+          "opening_entity_ids": "Windows and doors (optional \u2014 leave empty for none)",
+          "cover_entity_ids": "Blinds (optional \u2014 leave empty for none)",
           "lockout_reason": "Lockout",
           "occupied_after_minutes": "Wait this long before starting (minutes)",
           "vacant_after_minutes": "Wait this long after they leave before stopping (minutes)",
           "warning_grace_minutes": "Warn this long before shutting down (minutes)",
           "announce_before_shutdown": "Announce before shutting the room down",
-          "announce_target_entity_ids": "Announce through (optional)",
-          "heat_load_entity_id": "Heat source in the room (optional)",
-          "air_movement_entity_id": "Fan or air movement (optional)"
+          "announce_target_entity_ids": "Announce through (optional \u2014 leave empty for none)",
+          "heat_load_entity_id": "Heat source in the room (optional \u2014 leave empty for none)",
+          "air_movement_entity_id": "Fan or air movement (optional \u2014 leave empty for none)",
+          "overhang_projection_m": "Eave or soffit depth (optional \u2014 how far it projects from the wall)",
+          "overhang_height_m": "Eave or soffit height above the bottom of the glass (optional)"
         }
       },
       "bands": {
@@ -50,27 +52,29 @@
     "step": {
       "room": {
         "title": "Room",
-        "description": "Only the room name and the air conditioner are required. Leave anything you do not have empty.\n\n**Which way the windows face** lets the controller work out when the sun is actually on the glass, which is what decides whether closing a blind would achieve anything. Light level cannot answer that \u2014 a semi-transparent blind reads bright when fully closed. It needs no extra sensor; it uses the sun position Home Assistant already knows.\n\n**The two waiting times matter more than they look.** The first stops someone dropping a laptop off from starting the compressor. The second stops someone answering the front door from shutting it off \u2014 the room keeps running while they are briefly away, because stopping and starting costs more than the few minutes of running. The defaults are already filled in.\n\n**Lockout** means this room is never actuated. Leave it on \"Not locked out\" unless you mean it.",
+        "description": "Only the room name and the air conditioner are required. **An empty field means none** \u2014 that is a valid answer, not an unfinished one.\n\n**Which way the windows face** lets the controller work out when the sun is on the glass. It uses the latitude and longitude already set in Home Assistant, so it needs no sensor.\n\n**Eave or soffit depth** matters more than it looks. A window under an eave is fully shaded whenever the sun is high, which in summer is most of the middle of the day. Measure how far the eave projects from the wall, and how far it sits above the bottom of the glass. Leave both empty if there is no overhang.\n\n**The two waiting times** stop a laptop drop-off starting the compressor, and stop answering the front door shutting it off.\n\n**Lockout** means this room is never actuated. Leave it on 'Not locked out' unless you mean it.",
         "data": {
           "name": "Room name",
           "climate_entity_id": "Air conditioner",
-          "temperature_entity_id": "Temperature sensor (optional)",
-          "humidity_entity_id": "Humidity sensor (optional)",
-          "presence_entity_id": "Presence sensor (optional)",
-          "sleep_schedule_entity_id": "Sleep schedule (optional)",
-          "illuminance_entity_id": "Illuminance sensor (optional, recorded only)",
-          "window_direction": "Which way the windows face (optional)",
-          "direct_sun_entity_id": "Sun-on-window sensor (optional, overrides the above)",
-          "opening_entity_ids": "Windows and doors (optional)",
-          "cover_entity_ids": "Blinds (optional)",
+          "temperature_entity_id": "Temperature sensor (optional \u2014 leave empty for none)",
+          "humidity_entity_id": "Humidity sensor (optional \u2014 leave empty for none)",
+          "presence_entity_id": "Presence sensor (optional \u2014 leave empty for none)",
+          "sleep_schedule_entity_id": "Sleep schedule (optional \u2014 leave empty for none, e.g. an office)",
+          "illuminance_entity_id": "Illuminance sensor (optional \u2014 recorded only, not used)",
+          "window_direction": "Which way the windows face (optional \u2014 leave empty for none)",
+          "direct_sun_entity_id": "Sun-on-window sensor (optional \u2014 leave empty and it is calculated)",
+          "opening_entity_ids": "Windows and doors (optional \u2014 leave empty for none)",
+          "cover_entity_ids": "Blinds (optional \u2014 leave empty for none)",
           "lockout_reason": "Lockout",
           "occupied_after_minutes": "Wait this long before starting (minutes)",
           "vacant_after_minutes": "Wait this long after they leave before stopping (minutes)",
           "warning_grace_minutes": "Warn this long before shutting down (minutes)",
           "announce_before_shutdown": "Announce before shutting the room down",
-          "announce_target_entity_ids": "Announce through (optional)",
-          "heat_load_entity_id": "Heat source in the room (optional)",
-          "air_movement_entity_id": "Fan or air movement (optional)"
+          "announce_target_entity_ids": "Announce through (optional \u2014 leave empty for none)",
+          "heat_load_entity_id": "Heat source in the room (optional \u2014 leave empty for none)",
+          "air_movement_entity_id": "Fan or air movement (optional \u2014 leave empty for none)",
+          "overhang_projection_m": "Eave or soffit depth (optional \u2014 how far it projects from the wall)",
+          "overhang_height_m": "Eave or soffit height above the bottom of the glass (optional)"
         }
       },
       "bands": {
@@ -86,7 +90,8 @@
         }
       },
       "init": {
-        "title": "HVAC Coordinator",
+        "title": "Abode HVAC Coordinator",
+        "description": "{configuration}",
         "menu_options": {
           "room": "Add a room",
           "edit_room": "Edit a room",
@@ -101,14 +106,14 @@
       },
       "edit_room": {
         "title": "Edit a room",
-        "description": "Pick the room to change. Its current settings are prefilled.",
+        "description": "Pick the room to change. Its current settings are prefilled.\n\n{configuration}",
         "data": {
           "room_id": "Room"
         }
       },
       "remove_room": {
         "title": "Remove a room",
-        "description": "The room's device and all its entities are removed with it. Learned model state for the room is discarded.",
+        "description": "The room's device and all its entities are removed with it.\n\n{configuration}",
         "data": {
           "room_id": "Room"
         }
@@ -229,6 +234,9 @@
       },
       "rooms_configured": {
         "name": "Rooms configured"
+      },
+      "settings": {
+        "name": "Settings"
       }
     }
   },

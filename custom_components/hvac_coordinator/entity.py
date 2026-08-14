@@ -27,7 +27,7 @@ class HvacRoomEntity(CoordinatorEntity[HvacCoordinator]):
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, room.room_id)},
             name=room.name,
-            manufacturer="HVAC Coordinator",
+            manufacturer="Abode",
             model="Room",
             # A room is a logical grouping, not a physical device.
             entry_type=DeviceEntryType.SERVICE,

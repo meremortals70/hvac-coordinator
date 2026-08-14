@@ -29,6 +29,8 @@ Nothing. Creating the integration takes no settings. One instance only.
 | Presence sensor | No | Presence reads unknown; room holds occupied |
 | Sleep schedule | No | Sleep band is never used |
 | Which way the windows face | No | Blinds are never used, because the controller cannot tell when the sun is on the glass |
+| Eave or soffit depth | No | No overhang shading; a window under an eave is treated as fully exposed |
+| Eave height above the glass | No | As above; both measurements are needed together |
 | Sun-on-window sensor | No | Overrides the direction, for a room too complex for one compass point |
 | Illuminance sensor | No | Recorded only; not acted on |
 | Heat source in the room | No | Equipment heat is not counted toward comfort |
@@ -111,6 +113,19 @@ Configuring no tariff is valid. The controller runs on comfort alone.
 If one of these turns out to be something a user genuinely cannot work without,
 that is a bug in the derivation, and the fix is better derivation rather than
 another setting.
+
+## Seeing what is configured
+
+Two places, neither of which requires opening a form:
+
+**The Configure menu** lists every room and every setting on it, the whole
+tariff, and the house-wide settings, before you choose anything.
+
+**Each room's device** carries a **Settings** sensor whose attributes are that
+room's entire configuration, with anything unset stated as "Nothing selected"
+rather than left blank.
+
+The house-wide settings are sensors on the **Abode HVAC Coordinator** device.
 
 ## Changing configuration
 

@@ -45,6 +45,9 @@
       },
       "rooms_configured": {
         "default": "mdi:home-group"
+      },
+      "settings": {
+        "default": "mdi:clipboard-list-outline"
       }
     }
   },

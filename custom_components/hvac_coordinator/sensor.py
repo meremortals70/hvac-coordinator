@@ -46,6 +46,24 @@ class HvacSensorDescription(SensorEntityDescription):
     unavailable_when_none: bool = False
 
 
+def _configured(value: str | None) -> str:
+    """An entity id, or a plain statement that nothing is selected.
+
+    An empty field is ambiguous: it reads as "not loaded" as easily as "none".
+    Saying so removes the ambiguity.
+    """
+    return value or "Nothing selected"
+
+
+SENSORS: tuple[HvacSensorDescription, ...] = (
+    HvacSensorDescription(
+        key="settings",
+        translation_key="settings",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda trace: None,
+    ),
+)
+
 SENSORS: tuple[HvacSensorDescription, ...] = (
     HvacSensorDescription(
         key="mode",
@@ -94,12 +112,15 @@ async def async_setup_entry(
 
     @callback
     def _add_new_rooms() -> None:
-        new = [
-            HvacRoomSensor(coordinator, room, description)
-            for room_id, room in coordinator.rooms.items()
-            if room_id not in known
-            for description in SENSORS
-        ]
+        new: list[SensorEntity] = []
+        for room_id, room in coordinator.rooms.items():
+            if room_id in known:
+                continue
+            new.extend(
+                HvacRoomSensor(coordinator, room, description)
+                for description in SENSORS
+            )
+            new.append(RoomSettingsSensor(coordinator, room))
         known.update(coordinator.rooms)
         if new:
             async_add_entities(new)
@@ -320,8 +341,8 @@ def hub_device_info(entry: HvacConfigEntry) -> DeviceInfo:
     """The house-wide device every global setting appears under."""
     return DeviceInfo(
         identifiers={(DOMAIN, entry.entry_id)},
-        name="HVAC Coordinator",
-        manufacturer="HVAC Coordinator",
+        name="Abode HVAC Coordinator",
+        manufacturer="Abode",
         model="Coordinator",
         entry_type=DeviceEntryType.SERVICE,
     )
@@ -401,3 +422,82 @@ class DemandForecastSensor(CoordinatorEntity[HvacCoordinator], SensorEntity):
         """The per-window breakdown, so automations can read either."""
         forecast = self.coordinator.forecast
         return None if forecast is None else forecast.as_attributes()
+
+
+class RoomSettingsSensor(HvacRoomEntity, SensorEntity):
+    """What this room is configured with, readable without opening a form.
+
+    The state is a one-line summary; the attributes are every setting. A
+    configuration you have to edit in order to inspect is a configuration
+    nobody ever checks, and a wrong entity sitting in a form is invisible
+    until something misbehaves.
+    """
+
+    _attr_translation_key = "settings"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:clipboard-list-outline"
+
+    def __init__(self, coordinator: HvacCoordinator, room: RoomConfig) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, room)
+        self._attr_unique_id = f"{room.room_id}_settings"
+
+    @property
+    def available(self) -> bool:
+        """Always available: configuration exists whether or not it has run."""
+        return True
+
+    @property
+    def _config(self) -> RoomConfig | None:
+        return self.coordinator.rooms.get(self._room_id)
+
+    @property
+    def native_value(self) -> str | None:
+        """A one-line summary, so the state itself says something useful."""
+        room = self._config
+        if room is None:
+            return None
+        if room.lockout_reason:
+            return f"Locked out — {room.lockout_reason}"
+        bands = ", ".join(sorted(str(mode) for mode in room.bands))
+        return f"{bands} bands" if bands else "No bands configured"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Every setting for this room, with unset ones stated as unset."""
+        room = self._config
+        if room is None:
+            return None
+        return {
+            "room_id": room.room_id,
+            "air_conditioner": _configured(room.climate_entity_id),
+            "temperature_sensor": _configured(room.temperature_entity_id),
+            "humidity_sensor": _configured(room.humidity_entity_id),
+            "presence_sensor": _configured(room.presence_entity_id),
+            "sleep_schedule": _configured(room.sleep_schedule_entity_id),
+            "heat_source": _configured(room.heat_load_entity_id),
+            "air_movement": _configured(room.air_movement_entity_id),
+            "illuminance_sensor": _configured(room.illuminance_entity_id),
+            "sun_on_window_sensor": _configured(room.direct_sun_entity_id),
+            "windows_face": _configured(room.window_direction),
+            "overhang_projection_m": room.overhang_projection_m or "None",
+            "overhang_height_m": room.overhang_height_m or "None",
+            "windows_and_doors": list(room.opening_entity_ids) or "Nothing selected",
+            "blinds": list(room.cover_entity_ids) or "Nothing selected",
+            "comfort_bands": {
+                str(mode): {"low": band.low, "high": band.high}
+                for mode, band in room.bands.items()
+            }
+            or "None configured — this room will never be actuated",
+            "wait_before_starting_minutes": (
+                room.grace.occupied_after.total_seconds() / 60
+            ),
+            "wait_before_stopping_minutes": (
+                room.grace.vacant_after.total_seconds() / 60
+            ),
+            "warning_grace_minutes": room.grace.warning_grace.total_seconds() / 60,
+            "announces_before_shutdown": room.grace.announce,
+            "announce_through": list(room.announce_target_entity_ids)
+            or "Nothing selected",
+            "lockout_reason": room.lockout_reason or "Not locked out",
+        }

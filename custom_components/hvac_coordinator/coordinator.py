@@ -54,6 +54,8 @@ from .const import (
     CONF_OCCUPIED_AFTER,
     CONF_OPENING_ENTITIES,
     CONF_OUTDOOR_TEMPERATURE_ENTITY,
+    CONF_OVERHANG_HEIGHT,
+    CONF_OVERHANG_PROJECTION,
     CONF_PRESENCE_ENTITY,
     CONF_RATE,
     CONF_ROOM_ID,
@@ -586,6 +588,8 @@ class HvacCoordinator(DataUpdateCoordinator[dict[str, DecisionTrace]]):
             self._attribute(sun, "azimuth"),
             self._attribute(sun, "elevation"),
             azimuth_for_direction(room.window_direction),
+            overhang_projection_m=room.overhang_projection_m,
+            overhang_height_m=room.overhang_height_m,
         )
 
     @staticmethod
@@ -751,6 +755,8 @@ def _room_from_raw(
         illuminance_entity_id=raw.get(CONF_ILLUMINANCE_ENTITY),
         direct_sun_entity_id=raw.get(CONF_DIRECT_SUN_ENTITY),
         window_direction=raw.get(CONF_WINDOW_DIRECTION),
+        overhang_projection_m=raw.get(CONF_OVERHANG_PROJECTION),
+        overhang_height_m=raw.get(CONF_OVERHANG_HEIGHT),
         heat_load_entity_id=raw.get(CONF_HEAT_LOAD_ENTITY),
         air_movement_entity_id=raw.get(CONF_FAN_ENTITY),
         grace=GraceSettings.from_minutes(

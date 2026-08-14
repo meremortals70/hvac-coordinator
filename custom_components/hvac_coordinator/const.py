@@ -36,6 +36,12 @@ CONF_SLEEP_SCHEDULE_ENTITY: Final = "sleep_schedule_entity_id"
 CONF_ILLUMINANCE_ENTITY: Final = "illuminance_entity_id"
 CONF_DIRECT_SUN_ENTITY: Final = "direct_sun_entity_id"
 CONF_WINDOW_DIRECTION: Final = "window_direction"
+CONF_OVERHANG_PROJECTION: Final = "overhang_projection_m"
+CONF_OVERHANG_HEIGHT: Final = "overhang_height_m"
+
+#: Shown in every optional entity picker so an empty field reads as a
+#: deliberate "none", not as a form that failed to load.
+NOTHING_SELECTED: Final = "Nothing selected"
 CONF_OCCUPIED_AFTER: Final = "occupied_after_minutes"
 CONF_VACANT_AFTER: Final = "vacant_after_minutes"
 CONF_WARNING_GRACE: Final = "warning_grace_minutes"

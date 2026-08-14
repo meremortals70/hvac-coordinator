@@ -39,9 +39,15 @@ it is uncomfortably hot. Three corrections close it:
 
 | Correction | Adds | When |
 |---|---|---|
-| Sun on the glass | up to +3.0 HCI | Scaled by how far the covers are closed |
+| Sun on the glass | up to +3.0 HCI | Only when the sun actually reaches the glass, scaled by how far the covers are closed |
 | Still air | +1.0 HCI | No fan, and the air conditioner not running |
 | Heat load in the room | +1.0 HCI | A configured heat-source entity is on |
+
+**Eaves are checked before anything else.** A window under a soffit is fully
+shaded whenever the sun is high enough that the eave's shadow reaches past the
+bottom of the glass — in a subtropical summer, most of the middle of the day.
+Give the room the eave's projection and its height above the glass and the
+controller works this out; without them it assumes no overhang.
 
 **A closed blind is not the same as no sun.** A 50% blind passes roughly half
 the radiant load. Even a fully closed one passes about 15%, because it absorbs
