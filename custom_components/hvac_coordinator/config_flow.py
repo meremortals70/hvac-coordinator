@@ -69,6 +69,8 @@ from .forms import (
     default_grace_suggestions,
     describe_configuration,
     describe_export_window,
+    describe_global,
+    describe_rooms,
     describe_window,
     export_window_from_input,
     extend_lockout_reasons,
@@ -379,10 +381,27 @@ class HvacCoordinatorOptionsFlow(_RoomSteps, OptionsFlow):
         return self.async_show_menu(
             step_id="init",
             description_placeholders={"configuration": self._summary()},
+            menu_options=["rooms", "global"],
+        )
+
+    async def async_step_rooms(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Room configuration."""
+        return self.async_show_menu(
+            step_id="rooms",
+            description_placeholders={"configuration": self._rooms_summary()},
+            menu_options=["room", "edit_room", "remove_room"],
+        )
+
+    async def async_step_global(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Everything that applies to the whole house rather than one room."""
+        return self.async_show_menu(
+            step_id="global",
+            description_placeholders={"configuration": self._global_summary()},
             menu_options=[
-                "room",
-                "edit_room",
-                "remove_room",
                 "add_window",
                 "edit_window",
                 "remove_window",
@@ -390,6 +409,25 @@ class HvacCoordinatorOptionsFlow(_RoomSteps, OptionsFlow):
                 "supply_charge",
                 "outdoor",
             ],
+        )
+
+    def _rooms_summary(self) -> str:
+        """Every room and its settings."""
+        return describe_rooms(self._rooms)
+
+    def _global_summary(self) -> str:
+        """The tariff and the house-wide settings."""
+        return describe_global(
+            self._windows,
+            self._export_windows,
+            self.config_entry.options.get(
+                CONF_DAILY_SUPPLY_CENTS,
+                self.config_entry.data.get(CONF_DAILY_SUPPLY_CENTS),
+            ),
+            self.config_entry.options.get(
+                CONF_OUTDOOR_TEMPERATURE_ENTITY,
+                self.config_entry.data.get(CONF_OUTDOOR_TEMPERATURE_ENTITY),
+            ),
         )
 
     def _summary(self) -> str:

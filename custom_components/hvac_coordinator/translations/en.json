@@ -93,15 +93,8 @@
         "title": "Abode HVAC Coordinator",
         "description": "{configuration}",
         "menu_options": {
-          "room": "Add a room",
-          "edit_room": "Edit a room",
-          "remove_room": "Remove a room",
-          "add_window": "Add a tariff window",
-          "remove_window": "Remove a tariff window",
-          "outdoor": "Outdoor temperature feed",
-          "edit_window": "Edit a tariff window",
-          "export_rate": "Feed-in rate",
-          "supply_charge": "Daily supply charge"
+          "rooms": "Rooms",
+          "global": "Global configuration (tariff and house-wide)"
         }
       },
       "edit_room": {
@@ -177,6 +170,27 @@
         "description": "The fixed daily charge for the connection, in cents per day. One figure for the whole house.",
         "data": {
           "daily_supply_cents": "Daily supply charge (cents per day)"
+        }
+      },
+      "rooms": {
+        "title": "Rooms",
+        "description": "{configuration}",
+        "menu_options": {
+          "room": "Add a room",
+          "edit_room": "Edit a room",
+          "remove_room": "Remove a room"
+        }
+      },
+      "global": {
+        "title": "Global configuration",
+        "description": "These apply to the whole house, not to any one room.\n\n{configuration}",
+        "menu_options": {
+          "add_window": "Add a tariff window",
+          "edit_window": "Edit a tariff window",
+          "remove_window": "Remove a tariff window",
+          "export_rate": "Feed-in rate",
+          "supply_charge": "Daily supply charge",
+          "outdoor": "Outdoor temperature feed"
         }
       }
     },

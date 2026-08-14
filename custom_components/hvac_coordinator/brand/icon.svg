@@ -1,31 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#12304A"/>
-      <stop offset="1" stop-color="#071420"/>
-    </linearGradient>
-    <linearGradient id="flow" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#4FC3F7"/>
-      <stop offset="0.55" stop-color="#7BD98F"/>
-      <stop offset="1" stop-color="#F5A623"/>
+      <stop offset="0" stop-color="#2B6D8D"/>
+      <stop offset="1" stop-color="#19475D"/>
     </linearGradient>
   </defs>
 
-  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+  <polygon points="128,44 208,116 48,116" fill="#F2C14E"/>
+  <rect x="68" y="116" width="120" height="88" fill="#FFFFFF"/>
 
-  <!-- Roof -->
-  <path d="M92 246 L256 118 L420 246"
-        fill="none" stroke="#EDF4F9" stroke-width="32"
-        stroke-linecap="round" stroke-linejoin="round"/>
-  <!-- Walls and floor -->
-  <path d="M138 240 L138 402 L374 402 L374 240"
-        fill="none" stroke="#EDF4F9" stroke-width="32"
-        stroke-linecap="round" stroke-linejoin="round"/>
-
-  <!-- Airflow inside: cool entering, warm leaving -->
-  <path d="M182 300 C 220 272, 258 272, 296 300 C 316 314, 336 314, 344 302"
-        fill="none" stroke="url(#flow)" stroke-width="24" stroke-linecap="round"/>
-  <path d="M168 352 C 206 324, 244 324, 282 352 C 302 366, 322 366, 330 354"
-        fill="none" stroke="url(#flow)" stroke-width="24" stroke-linecap="round"
-        opacity="0.6"/>
+  <!-- Airflow, in place of the AI wordmark. Same navy as the letters. -->
+  <g fill="none" stroke="#18465C" stroke-width="14" stroke-linecap="round">
+    <path d="M86 142 C 107 122, 128 162, 149 142 C 158 133, 166 132, 172 137"/>
+    <path d="M86 178 C 107 158, 128 198, 149 178 C 158 169, 166 168, 172 173"/>
+  </g>
 </svg>

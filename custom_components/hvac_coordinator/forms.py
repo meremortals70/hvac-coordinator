@@ -365,6 +365,53 @@ def describe_room(room: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def describe_rooms(rooms: list[dict[str, Any]]) -> str:
+    """Every room and every setting on it."""
+    if not rooms:
+        return "No rooms configured yet."
+    return "\n".join(describe_room(room) for room in rooms)
+
+
+def describe_global(
+    windows: list[dict[str, Any]],
+    export_windows: list[dict[str, Any]],
+    daily_supply_cents: float | None,
+    outdoor_entity_id: str | None,
+) -> str:
+    """The tariff and the house-wide settings, as readable lines."""
+    lines: list[str] = ["**Tariff windows**"]
+    if windows:
+        for window in sort_windows(windows):
+            lines.append(f"  {describe_window(window)}")
+        problems = schedule_gaps(windows)
+        if problems:
+            lines.append("")
+            lines.append("  Incomplete — " + "; ".join(problems) + ".")
+            lines.append("  The schedule is ignored until it covers the whole day.")
+    else:
+        lines.append("  None configured.")
+
+    lines.append("")
+    lines.append("**Feed-in**")
+    if export_windows:
+        lines.extend(f"  {describe_export_window(w)}" for w in export_windows)
+    else:
+        lines.append("  Not configured.")
+
+    lines.append("")
+    lines.append("**Daily supply charge**")
+    lines.append(
+        f"  {daily_supply_cents}c per day"
+        if daily_supply_cents is not None
+        else "  Not configured."
+    )
+
+    lines.append("")
+    lines.append("**Outdoor temperature**")
+    lines.append(f"  {outdoor_entity_id or 'Nothing selected'}")
+    return "\n".join(lines)
+
+
 def describe_configuration(
     rooms: list[dict[str, Any]],
     windows: list[dict[str, Any]],

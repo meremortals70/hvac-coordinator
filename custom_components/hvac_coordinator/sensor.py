@@ -29,6 +29,7 @@ from .const import DOMAIN
 from .coordinator import HvacCoordinator
 from .entity import HvacRoomEntity
 from .models import DecisionTrace, RoomConfig
+from .tariff import TariffWindow
 
 # The coordinator centralises evaluation and this platform is read-only.
 PARALLEL_UPDATES = 0
@@ -136,6 +137,27 @@ async def async_setup_entry(
             ],
         ]
     )
+
+    known_windows: set[str] = set()
+
+    @callback
+    def _add_new_windows() -> None:
+        """One entity per tariff window, so a price is a value not an attribute."""
+        if coordinator.tariff is None:
+            return
+        new = [
+            TariffWindowSensor(coordinator, entry, window)
+            for window in coordinator.tariff.windows
+            if window.start.isoformat() not in known_windows
+        ]
+        known_windows.update(
+            window.start.isoformat() for window in coordinator.tariff.windows
+        )
+        if new:
+            async_add_entities(new)
+
+    _add_new_windows()
+    entry.async_on_unload(coordinator.async_add_listener(_add_new_windows))
 
 
 class HvacRoomSensor(HvacRoomEntity, SensorEntity):
@@ -500,4 +522,73 @@ class RoomSettingsSensor(HvacRoomEntity, SensorEntity):
             "announce_through": list(room.announce_target_entity_ids)
             or "Nothing selected",
             "lockout_reason": room.lockout_reason or "Not locked out",
+        }
+
+
+class TariffWindowSensor(CoordinatorEntity[HvacCoordinator], SensorEntity):
+    """One tariff window's import price, as an entity in its own right.
+
+    A price buried in another entity's attributes cannot be graphed, cannot be
+    used in a template without `state_attr`, and does not show on a dashboard.
+    Each window gets its own sensor so its cost is a value like any other.
+    """
+
+    _attr_has_entity_name = True
+    _attr_native_unit_of_measurement = "c/kWh"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 2
+    _attr_icon = "mdi:cash-clock"
+
+    def __init__(
+        self,
+        coordinator: HvacCoordinator,
+        entry: HvacConfigEntry,
+        window: TariffWindow,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._start = window.start
+        self._attr_unique_id = f"{entry.entry_id}_window_{window.start.isoformat()}"
+        span = (
+            "all day"
+            if window.start == window.end
+            else f"{window.start.strftime('%H:%M')}-{window.end.strftime('%H:%M')}"
+        )
+        self._attr_name = f"{window.rate.replace('_', ' ').title()} {span}"
+        self._attr_device_info = hub_device_info(entry)
+
+    @property
+    def _window(self) -> TariffWindow | None:
+        if self.coordinator.tariff is None:
+            return None
+        return next(
+            (w for w in self.coordinator.tariff.windows if w.start == self._start),
+            None,
+        )
+
+    @property
+    def available(self) -> bool:
+        """Unavailable once its window is removed from the tariff."""
+        return super().available and self._window is not None
+
+    @property
+    def native_value(self) -> float | None:
+        """The import price for this window."""
+        window = self._window
+        return None if window is None else window.import_cents
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """When it runs and what rules apply while it does."""
+        window = self._window
+        if window is None:
+            return None
+        now = dt_util.now().time()
+        return {
+            "start": window.start.isoformat(),
+            "end": window.end.isoformat(),
+            "rate": window.rate,
+            "constraints": sorted(window.constraints),
+            "coasting_permitted": window.coasting_permitted,
+            "in_force_now": window.contains(now),
         }
