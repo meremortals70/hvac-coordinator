@@ -5,7 +5,7 @@ doing, room by room, and tells you exactly why.
 
 **It never writes to your battery.**
 
-> ### Status: v0.5.2 — not yet proven
+> ### Status: v0.5.3 — not yet proven
 > Everything described here is built and unit tested. None of it has run for
 > long against real hardware. Treat your first week as a test and read
 > [Known limitations](docs/known-limitations.md) before you rely on it.
@@ -120,6 +120,9 @@ sustained absence shuts it down. Coming back cancels it.
 | [Architecture](docs/architecture.md) | The layer model and the settled decisions |
 | [Data updates](docs/data-updates.md) | When it evaluates, and what triggers it |
 | [Contributing](docs/contributing.md) | Tests, structure, quality scale |
+| [As-built](AS-BUILT.md) | What was built, and where it differs from the design |
+| [Handover](HANDOVER.md) | Context for picking this up cold |
+| [Architecture gaps](ARCHITECTURE-GAPS.md) | What the architecture specifies and the code does not do |
 
 ---
 

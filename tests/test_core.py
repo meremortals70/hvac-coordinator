@@ -1917,3 +1917,64 @@ class TestConfigurationIsReadable(unittest.TestCase):
             None,
         )
         self.assertIn("Incomplete", summary)
+
+
+class TestGlobalConfigurationIsSeparate(unittest.TestCase):
+    """House-wide settings are not room settings and should not look like them."""
+
+    def test_the_global_summary_covers_tariff_feed_in_supply_and_outdoor(self):
+        summary = _forms.describe_global(
+            [
+                {
+                    "start": "00:00:00",
+                    "end": "16:00:00",
+                    "rate": "off_peak",
+                    "import_cents_per_kwh": 22.5,
+                },
+                {
+                    "start": "16:00:00",
+                    "end": "00:00:00",
+                    "rate": "peak",
+                    "import_cents_per_kwh": 48.9,
+                },
+            ],
+            [{"start": "00:00:00", "end": "00:00:00", "export_cents_per_kwh": 5.0}],
+            118.0,
+            "sensor.outdoor",
+        )
+        self.assertIn("**Tariff windows**", summary)
+        self.assertIn("22.5", summary)
+        self.assertIn("48.9", summary)
+        self.assertIn("**Feed-in**", summary)
+        self.assertIn("**Daily supply charge**", summary)
+        self.assertIn("118.0c per day", summary)
+        self.assertIn("sensor.outdoor", summary)
+
+    def test_unconfigured_global_settings_say_so(self):
+        summary = _forms.describe_global([], [], None, None)
+        self.assertIn("None configured", summary)
+        self.assertIn("Not configured", summary)
+        self.assertIn("Nothing selected", summary)
+
+    def test_an_incomplete_tariff_is_flagged_in_the_global_summary(self):
+        summary = _forms.describe_global(
+            [{"start": "06:00:00", "end": "18:00:00", "rate": "day"}], [], None, None
+        )
+        self.assertIn("Incomplete", summary)
+
+    def test_the_rooms_summary_is_separate_from_the_global_one(self):
+        rooms = _forms.describe_rooms(
+            [
+                {
+                    "room_id": "office",
+                    "name": "Office",
+                    "climate_entity_id": "climate.office",
+                    "bands": {"occupied": {"low": 24.0, "high": 27.0}},
+                }
+            ]
+        )
+        self.assertIn("Office", rooms)
+        self.assertNotIn("Tariff", rooms)
+
+    def test_no_rooms_says_so(self):
+        self.assertIn("No rooms configured", _forms.describe_rooms([]))

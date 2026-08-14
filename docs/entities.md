@@ -83,6 +83,20 @@ that set it.
 | Outdoor temperature | The configured outdoor feed |
 | Rooms configured | How many, and which |
 
+Plus **one sensor per tariff window**, named for its rate and hours — "Peak
+16:00-21:00" — whose state is that window's import price in cents per kWh. A
+price is a value, not an attribute of something else: it can be graphed, put on
+a dashboard, and read in a template without `state_attr`. Each carries its
+constraints and whether it is in force right now in its attributes.
+
+## Per-room settings sensor
+
+Each room device carries a **Settings** sensor. Its state is a one-line summary;
+its attributes are that room's entire configuration, with anything unset stated
+as "Nothing selected" rather than left blank.
+
+It exists so a configuration can be read without opening the form that set it.
+
 ## Repair issues
 
 | Issue | Raised when |

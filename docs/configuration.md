@@ -118,8 +118,10 @@ another setting.
 
 Two places, neither of which requires opening a form:
 
-**The Configure menu** lists every room and every setting on it, the whole
-tariff, and the house-wide settings, before you choose anything.
+**The Configure menu** splits into **Rooms** and **Global configuration**, and
+each screen prints everything currently set on it before you choose anything.
+Global covers the tariff, feed-in, daily supply charge and outdoor feed — none
+of which belong to a room.
 
 **Each room's device** carries a **Settings** sensor whose attributes are that
 room's entire configuration, with anything unset stated as "Nothing selected"

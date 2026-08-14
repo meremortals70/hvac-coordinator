@@ -2,8 +2,9 @@
 
 ## Configuring it
 
-**Settings → Devices & Services → HVAC Coordinator → Configure.** Five tariff
-options there:
+**Settings → Devices & Services → Abode HVAC Coordinator → Configure → Global
+configuration.** The tariff belongs to the house, not to any room, which is why
+it lives there. Five options:
 
 | Option | What it does |
 |---|---|
@@ -77,9 +78,10 @@ and turns it into a schedule.
 
 **Daily supply charge** is one figure for the whole house, in cents per day.
 
-All three appear as sensors on the coordinator device, so what you entered is
-visible rather than buried in a form you have to reopen to check. So does
-**Projected cost**: the demand forecast priced per window, in dollars.
+Every one of these is a sensor on the coordinator device, and **each tariff
+window is its own entity** carrying its own price — not a row inside another
+entity's attributes. So is **Projected cost**: the demand forecast priced per
+window, in dollars.
 
 ## Coasting
 
